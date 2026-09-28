@@ -1,0 +1,2366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Python IDLE — v6</title>
+<style>
+:root{
+  --bg:#050505; --fg:#ececec; --muted:#8a8f8c;
+  --accent:#39d353; --accent-rgb:57,211,83; --err:#ff6b6b; --err-rgb:255,107,107;
+  --warn:#f3c969; --warn-rgb:243,201,105;
+  --border:rgba(255,255,255,0.12);
+  --glass:rgba(22,24,22,0.55); --glass-strong:rgba(28,30,28,0.72);
+  --glass-hi:rgba(255,255,255,0.14); --glass-lo:rgba(255,255,255,0.02);
+  --blur:26px;
+  --kw:#39d353; --str:#f3c969; --com:#6b7d70; --num:#8fd0ff; --fn:#f2f2f2;
+  --fs:14px; --lh:20px;
+}
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+[hidden]{ display:none !important; }
+html,body{
+  height:100%; margin:0; color:var(--fg); overflow:hidden;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background-color:#020202;
+  background-image:
+    radial-gradient(ellipse 140% 60% at 50% -12%, rgba(255,255,255,0.09), rgba(255,255,255,0) 55%),
+    radial-gradient(ellipse 130% 70% at 15% 105%, rgba(0,0,0,0.75), rgba(0,0,0,0) 60%),
+    radial-gradient(ellipse 130% 70% at 85% 105%, rgba(0,0,0,0.75), rgba(0,0,0,0) 60%),
+    linear-gradient(180deg, #101110 0%, #060606 45%, #000 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  background-repeat:no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  background-size:100% 100%, 100% 100%, 100% 100%, 100% 100%, 180px 180px;
+}
+#app{ position:relative; display:flex; flex-direction:column; height:100dvh; overflow:hidden; }
+
+/* ---- shared liquid-glass surface ---- */
+header#topbar, .panel-header, #divider, .term-input-row, .suggest-bar, .sym-bar, #status, #notice{
+  background:linear-gradient(180deg, var(--glass-hi), var(--glass-lo) 45%, rgba(0,0,0,0.30));
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(180%);
+  backdrop-filter:blur(var(--blur)) saturate(180%);
+}
+
+header#topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:8px; padding:8px; padding-top:calc(8px + env(safe-area-inset-top,0));
+  border-bottom:1px solid var(--border); flex:none;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.10), 0 6px 18px rgba(0,0,0,0.45);
+}
+.actions{ display:flex; gap:8px; align-items:center; }
+.actions button, .panel-header button, .suggest-bar button, .sym-bar button,
+#file-btn, .gbtn, .chip{
+  border-radius:9px; border:1px solid var(--border); color:var(--fg);
+  background:linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.02));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.22), 0 2px 6px rgba(0,0,0,0.5);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  font-family:inherit;
+}
+.actions button{ width:40px; height:40px; font-size:16px; line-height:1; }
+.actions button:active, .panel-header button:active, #file-btn:active, .gbtn:active, .chip:active{ transform:scale(0.94); }
+.actions button:disabled{ opacity:.35; box-shadow:none; animation:none; }
+@keyframes glow-pulse{
+  0%,100%{ box-shadow:inset 0 1px 0 rgba(255,255,255,0.3), 0 0 10px rgba(var(--accent-rgb),0.45), 0 2px 8px rgba(0,0,0,0.5); }
+  50%{ box-shadow:inset 0 1px 0 rgba(255,255,255,0.3), 0 0 22px rgba(var(--accent-rgb),0.85), 0 2px 8px rgba(0,0,0,0.5); }
+}
+#btn-run{
+  color:var(--accent); border-color:rgba(var(--accent-rgb),0.55); font-size:15px;
+  background:linear-gradient(180deg, rgba(var(--accent-rgb),0.28), rgba(var(--accent-rgb),0.05));
+  animation:glow-pulse 2.4s ease-in-out infinite;
+}
+
+/* file name button + save indicator */
+#file-btn{
+  display:flex; align-items:center; gap:6px; min-width:0; max-width:58%;
+  height:40px; padding:0 12px; font-size:13px; letter-spacing:.02em;
+}
+#file-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#file-btn .caret{ color:var(--muted); font-size:11px; }
+.save-ind{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); white-space:nowrap; }
+.save-ind::before{ content:""; width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px rgba(var(--accent-rgb),0.7); }
+.save-ind.saving::before, .save-ind.paused::before, .save-ind.memory::before{ background:var(--warn); box-shadow:0 0 8px rgba(var(--warn-rgb),0.7); }
+.save-ind.failed::before{ background:var(--err); box-shadow:0 0 8px rgba(var(--err-rgb),0.7); }
+.save-ind.failed{ color:var(--err); }
+
+#status{ font-size:12px; color:var(--muted); padding:5px 10px; border-bottom:1px solid var(--border); flex:none; }
+#status.hidden{ display:none; }
+#notice{
+  display:flex; align-items:center; gap:8px; font-size:12px; color:var(--warn);
+  padding:6px 10px; border-bottom:1px solid var(--border); flex:none;
+}
+#notice span{ flex:1; min-width:0; }
+#notice button{ padding:5px 10px; font-size:12px; }
+
+main#views{ flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+.panel{ display:flex; flex-direction:column; overflow:hidden; flex:none; min-height:0; }
+.panel-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:4px 8px; border-bottom:1px solid var(--border);
+  font-size:11px; color:var(--muted); flex:none; text-transform:uppercase; letter-spacing:.06em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.panel-header button{ width:24px; height:24px; font-size:12px; line-height:1; }
+
+#divider{
+  height:18px; flex:none; border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border); display:flex; align-items:center;
+  justify-content:center; touch-action:none; cursor:row-resize;
+}
+#divider .grip{ width:38px; height:4px; border-radius:2px; background:rgba(255,255,255,0.35); box-shadow:0 0 6px rgba(255,255,255,0.15); }
+
+/* ---- Script / editor panel ---- */
+.editor-wrap{
+  flex:1; display:flex; overflow:hidden; min-height:0;
+  background:rgba(8,9,8,0.55); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+}
+#gutter{
+  width:calc(var(--fs) * 2.3); flex:0 0 auto; background:rgba(0,0,0,0.35); color:#5b615c; font-size:var(--fs);
+  line-height:var(--lh); padding:8px 4px 8px 0; text-align:right; overflow:hidden;
+  user-select:none; border-right:1px solid var(--border); white-space:pre;
+}
+.code-area{ position:relative; flex:1; overflow:hidden; }
+#highlight, #code{
+  position:absolute; inset:0; margin:0; padding:8px; font-size:var(--fs); line-height:var(--lh);
+  font-family:inherit; white-space:pre; word-wrap:normal; tab-size:4;
+}
+#highlight{ color:var(--fg); overflow:hidden; pointer-events:none; }
+#ghost{
+  position:absolute; inset:0; margin:0; padding:8px; font-size:var(--fs); line-height:var(--lh);
+  font-family:inherit; white-space:pre; tab-size:4; color:transparent; overflow:hidden; pointer-events:none;
+}
+#ghost .gs{ color:rgba(255,255,255,0.34); font-style:italic; }
+#code{
+  background:transparent; color:transparent; caret-color:var(--accent);
+  -webkit-text-fill-color:transparent; border:none; outline:none; resize:none;
+  overflow:auto; width:100%; height:100%;
+}
+.kw{ color:var(--kw); font-weight:600; } .str{ color:var(--str); } .com{ color:var(--com); font-style:italic; }
+.num{ color:var(--num); } .fn{ color:var(--fn); }
+
+/* ---- Terminal panel ---- */
+.term-output{
+  flex:1; overflow-y:auto; padding:8px; font-size:14px; line-height:20px; white-space:pre-wrap; word-break:break-word; min-height:0;
+  background:rgba(8,9,8,0.5); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+}
+.term-output .l-err{ color:var(--err); text-shadow:0 0 8px rgba(var(--err-rgb),0.35); }
+.term-output .l-echo{ color:var(--muted); }
+.term-output .l-sys{ color:var(--accent); text-shadow:0 0 8px rgba(var(--accent-rgb),0.35); }
+.term-input-row{ display:flex; align-items:center; gap:6px; padding:8px; border-top:1px solid var(--border); flex:none; }
+.prompt{ color:var(--accent); font-size:14px; white-space:pre; text-shadow:0 0 8px rgba(var(--accent-rgb),0.4); }
+#term-input{ flex:1; min-width:0; background:transparent; border:none; outline:none; color:var(--fg); font-size:16px; font-family:inherit; caret-color:var(--accent); }
+
+/* ---- suggestion + symbol bars (always sit at the very bottom, above the keyboard) ---- */
+.suggest-bar{ display:none; gap:6px; padding:6px 8px; overflow-x:auto; border-top:1px solid var(--border); white-space:nowrap; flex:none; }
+.suggest-bar.show{ display:flex; }
+.suggest-bar button{
+  flex:0 0 auto; color:var(--accent); padding:6px 12px; font-size:13px; font-family:inherit;
+  border-color:rgba(var(--accent-rgb),0.4);
+  background:linear-gradient(180deg, rgba(var(--accent-rgb),0.22), rgba(var(--accent-rgb),0.04));
+}
+
+.sym-bar{ display:flex; gap:6px; padding:6px 8px calc(6px + env(safe-area-inset-bottom,0)) 8px; overflow-x:auto; border-top:1px solid var(--border); white-space:nowrap; flex:none; }
+.sym-bar button{ flex:0 0 auto; min-width:38px; height:36px; font-size:14px; font-family:inherit; }
+.sym-bar button:active{ transform:scale(0.92); background:linear-gradient(180deg, rgba(255,255,255,0.26), rgba(255,255,255,0.04)); }
+
+/* ---- files drawer ---- */
+#drawer-scrim{ position:absolute; inset:0; z-index:30; background:rgba(0,0,0,0.4); }
+#drawer{
+  position:absolute; left:8px; right:8px; z-index:31; max-height:68%;
+  display:flex; flex-direction:column; overflow:hidden;
+  border:1px solid var(--border); border-radius:14px;
+  background:rgba(16,18,16,0.94);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(180%); backdrop-filter:blur(var(--blur)) saturate(180%);
+  box-shadow:0 14px 40px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.d-top, .d-newrow{ display:flex; gap:6px; padding:8px; border-bottom:1px solid var(--border); align-items:center; flex:none; }
+.d-top input, .d-newrow input, .d-ren, .p-input{
+  flex:1; min-width:0; background:rgba(255,255,255,0.06); border:1px solid var(--border);
+  border-radius:9px; color:var(--fg); font-family:inherit; font-size:16px; padding:8px 10px; outline:none;
+}
+.d-top input:focus, .d-newrow input:focus, .d-ren:focus, .p-input:focus{ border-color:rgba(var(--accent-rgb),0.6); }
+.d-ext{ color:var(--muted); font-size:13px; }
+.d-msg{ padding:6px 10px; font-size:12px; color:var(--err); border-bottom:1px solid var(--border); flex:none; }
+#d-list{ overflow-y:auto; flex:1; min-height:0; }
+.d-row{ display:flex; align-items:center; gap:6px; padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.06); }
+.d-row.cur{ background:rgba(var(--accent-rgb),0.10); }
+.d-name{
+  flex:1; min-width:0; text-align:left; background:none; border:none; color:var(--fg);
+  font-family:inherit; font-size:14px; padding:6px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.d-name small{ display:block; color:var(--muted); font-size:11px; margin-top:2px; }
+.d-empty{ padding:16px; text-align:center; color:var(--muted); font-size:13px; }
+.gbtn{ padding:7px 11px; font-size:13px; min-width:36px; }
+.gbtn.danger{ color:var(--err); border-color:rgba(var(--err-rgb),0.55); }
+.gbtn.primary{ color:var(--accent); border-color:rgba(var(--accent-rgb),0.55); background:linear-gradient(180deg, rgba(var(--accent-rgb),0.26), rgba(var(--accent-rgb),0.05)); }
+
+/* ---- first-run / edit profile ---- */
+#profile{
+  position:absolute; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+  padding:16px; background:rgba(0,0,0,0.55); overflow:auto;
+  -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+}
+.p-card{
+  width:100%; max-width:380px; border:1px solid var(--border); border-radius:18px; padding:18px; margin:auto;
+  background:linear-gradient(180deg, var(--glass-hi), var(--glass-lo) 45%, rgba(0,0,0,0.35)), rgba(14,16,14,0.88);
+  box-shadow:0 18px 50px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.14);
+}
+.p-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.p-card h2{ margin:0; font-size:16px; color:var(--accent); text-shadow:0 0 10px rgba(var(--accent-rgb),0.35); }
+.p-step{ font-size:11px; color:var(--muted); }
+.p-card p{ margin:6px 0 0; font-size:12px; color:var(--muted); line-height:1.5; }
+.p-label{ font-size:12px; color:var(--muted); margin:16px 0 6px; }
+.p-card .p-input{ width:100%; }
+.chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.chip{ padding:8px 12px; font-size:13px; }
+.chip.sel{ color:var(--accent); border-color:rgba(var(--accent-rgb),0.6); background:linear-gradient(180deg, rgba(var(--accent-rgb),0.26), rgba(var(--accent-rgb),0.05)); }
+.p-size{ display:flex; align-items:center; gap:10px; }
+.p-size b{ min-width:44px; text-align:center; font-weight:600; }
+.p-nav{ display:flex; justify-content:space-between; gap:8px; margin-top:20px; }
+.p-nav .gbtn{ padding:10px 16px; font-size:14px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <button id="file-btn" title="Files"><span id="file-name">…</span><span class="caret">▾</span></button>
+    <div class="actions">
+      <span id="save-ind" class="save-ind saved">Saved</span>
+      <button id="btn-run" disabled title="Run">▶</button>
+    </div>
+  </header>
+
+  <div id="status">Loading Python engine…</div>
+  <div id="notice" hidden><span id="notice-text"></span><button id="notice-btn" class="gbtn" hidden>Reload</button></div>
+
+  <main id="views">
+    <section id="view-script" class="panel">
+      <div class="panel-header">
+        <span>Script</span>
+        <button id="clear-script" title="Clear script">✕</button>
+      </div>
+      <div class="editor-wrap">
+        <div id="gutter">1</div>
+        <div class="code-area">
+          <pre id="highlight"><code id="highlight-code"></code></pre>
+          <pre id="ghost"></pre>
+          <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" placeholder="print(&quot;Hello, world!&quot;)" readonly></textarea>
+        </div>
+      </div>
+    </section>
+
+    <div id="divider"><div class="grip"></div></div>
+
+    <section id="view-terminal" class="panel">
+      <div class="panel-header">
+        <span>Terminal</span>
+        <button id="clear-terminal" title="Clear terminal">✕</button>
+      </div>
+      <div id="term-output" class="term-output"></div>
+      <div class="term-input-row">
+        <span id="term-prompt" class="prompt">&gt;&gt;&gt;</span>
+        <input id="term-input" type="text" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
+      </div>
+    </section>
+  </main>
+
+  <div id="suggest-bar" class="suggest-bar"></div>
+  <div id="sym-bar" class="sym-bar">
+    <button data-act="tab">Tab</button>
+    <button data-ins=":">:</button>
+    <button data-ins="(">(</button>
+    <button data-ins=")">)</button>
+    <button data-ins="[">[</button>
+    <button data-ins="]">]</button>
+    <button data-ins="{">{</button>
+    <button data-ins="}">}</button>
+    <button data-ins="&quot;">"</button>
+    <button data-ins="'">'</button>
+    <button data-ins="=">=</button>
+    <button data-ins="_">_</button>
+    <button data-ins="#">#</button>
+    <button data-act="left">←</button>
+    <button data-act="right">→</button>
+    <button data-act="up">↑</button>
+    <button data-act="down">↓</button>
+  </div>
+
+  <!-- files drawer -->
+  <div id="drawer-scrim" hidden></div>
+  <div id="drawer" hidden>
+    <div class="d-top">
+      <input id="d-search" type="text" placeholder="Search files" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button class="gbtn primary" data-d="new">+ New</button>
+    </div>
+    <div class="d-newrow" id="d-newrow" hidden>
+      <input id="d-new" type="text" placeholder="File name" maxlength="60" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
+      <span class="d-ext">.py</span>
+      <button class="gbtn primary" data-d="create">Create</button>
+      <button class="gbtn" data-d="cancelnew">✕</button>
+    </div>
+    <div class="d-msg" id="d-msg" hidden></div>
+    <div id="d-list"></div>
+  </div>
+
+  <!-- first-run profile -->
+  <div id="profile" hidden><div class="p-card" id="p-card"></div></div>
+
+  <input id="import-file" type="file" hidden multiple accept=".json,.py,application/json,text/x-python,text/plain">
+</div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- element refs ---------------- */
+  var appEl       = document.getElementById('app');
+  var topbarEl    = document.getElementById('topbar');
+  var viewsEl     = document.getElementById('views');
+  var codeEl      = document.getElementById('code');
+  var hlEl        = document.getElementById('highlight-code');
+  var gutterEl    = document.getElementById('gutter');
+  var statusEl    = document.getElementById('status');
+  var noticeEl    = document.getElementById('notice');
+  var noticeText  = document.getElementById('notice-text');
+  var noticeBtn   = document.getElementById('notice-btn');
+  var runBtn      = document.getElementById('btn-run');
+  var fileBtn     = document.getElementById('file-btn');
+  var fileNameEl  = document.getElementById('file-name');
+  var saveInd     = document.getElementById('save-ind');
+  var clearScriptBtn = document.getElementById('clear-script');
+  var clearTermBtn   = document.getElementById('clear-terminal');
+  var viewScript  = document.getElementById('view-script');
+  var viewTerminal= document.getElementById('view-terminal');
+  var divider     = document.getElementById('divider');
+  var termOutput  = document.getElementById('term-output');
+  var termInput   = document.getElementById('term-input');
+  var termPrompt  = document.getElementById('term-prompt');
+  var suggestBar  = document.getElementById('suggest-bar');
+  var symBar      = document.getElementById('sym-bar');
+  var drawerEl    = document.getElementById('drawer');
+  var scrimEl     = document.getElementById('drawer-scrim');
+  var dSearch     = document.getElementById('d-search');
+  var dNewRow     = document.getElementById('d-newrow');
+  var dNew        = document.getElementById('d-new');
+  var dMsg        = document.getElementById('d-msg');
+  var dList       = document.getElementById('d-list');
+  var profileEl   = document.getElementById('profile');
+  var pCard       = document.getElementById('p-card');
+  var importFile  = document.getElementById('import-file');
+
+  var lastFocus = 'script'; // 'script' | 'terminal' — which panel the sym-bar acts on
+  var pyodideReady = false;
+  var pyodide = null;
+
+  /* =====================================================================
+     STORAGE LAYER  (IndexedDB -> localStorage fallback -> memory only)
+     ===================================================================== */
+  var APP = 'python-v6', SCHEMA = 1, DB_NAME = 'python-v6', DB_VERSION = 1;
+  var LS_DATA = 'python-v6.data', LS_SNAPS = 'python-v6.snaps', LEGACY_HISTORY = 'pyidle.history';
+  var HISTORY_MAX = 200, SNAP_MAX = 3, MAX_FILES = 500, MAX_CONTENT = 1000000, SAVE_DELAY = 150;
+  var EXPERIENCE = ['Beginner', 'Intermediate', 'Advanced'];
+  var GOALS = ['Learn basics', 'School work', 'Projects', 'Competitions', 'Other'];
+  var STARTER_NAMES = { 'Learn basics':'hello.py', 'School work':'homework.py', 'Projects':'project.py', 'Competitions':'solution.py', 'Other':'main.py' };
+  var TAB_ID = 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  /* ---- small helpers ---- */
+  function now(){ return Date.now(); }
+  function pad2(n){ return (n < 10 ? '0' : '') + n; }
+  function fmtDate(ts){
+    if (!ts) return 'never';
+    var d = new Date(ts);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function fmtTime(ts){
+    if (!ts) return 'never';
+    var d = new Date(ts);
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+  }
+  function dateStamp(){
+    var d = new Date();
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  function fmtBytes(n){
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1073741824).toFixed(2) + ' GB';
+  }
+  function byteLen(s){ try { return new Blob([s]).size; } catch (e) { return s.length; } }
+  function padR(s, n){ s = String(s); while (s.length < n) s += ' '; return s; }
+  function newId(){ return 'f_' + now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function isObj(x){ return x !== null && typeof x === 'object' && !Array.isArray(x); }
+  function num(x, def){ return (typeof x === 'number' && isFinite(x) && x > 0) ? x : def; }
+  function errMsg(e){ return String((e && e.message) || e || 'unknown error'); }
+
+  /* ---- names ---- */
+  function normalizeName(raw){
+    if (typeof raw !== 'string') return null;
+    var n = raw.trim().replace(/\\/g, '/').split('/').pop();
+    n = n.replace(/\.py$/i, '');
+    n = n.replace(/\s+/g, '_').replace(/[:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '');
+    n = n.slice(0, 60);
+    if (!n) return null;
+    return n + '.py';
+  }
+  function uniqueName(name, taken){
+    if (!taken[name.toLowerCase()]) return name;
+    var base = name.replace(/\.py$/i, '');
+    var i = 2;
+    while (taken[(base + '-' + i + '.py').toLowerCase()]) i++;
+    return base + '-' + i + '.py';
+  }
+
+  /* ---- sanitizers (used for stored data, imports and snapshots) ---- */
+  function sanitizeFiles(list, keepIds){
+    var out = [], skipped = 0, taken = {}, ids = {};
+    for (var i = 0; i < list.length; i++){
+      var r = list[i];
+      if (out.length >= MAX_FILES){ skipped++; continue; }
+      if (!isObj(r) || typeof r.content !== 'string' || r.content.length > MAX_CONTENT){ skipped++; continue; }
+      var nm = normalizeName(r.name);
+      if (!nm){ skipped++; continue; }
+      nm = uniqueName(nm, taken);
+      taken[nm.toLowerCase()] = 1;
+      var id = (keepIds && typeof r.id === 'string' && r.id && !ids[r.id]) ? r.id : newId();
+      ids[id] = 1;
+      var t = now();
+      out.push({ id:id, name:nm, content:r.content, createdAt:num(r.createdAt, t), updatedAt:num(r.updatedAt, t), size:byteLen(r.content) });
+    }
+    return { files: out, skipped: skipped };
+  }
+  function sanitizeProfile(p){
+    if (!isObj(p)) return null;
+    var name = String(p.name == null ? '' : p.name).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 30) || 'Coder';
+    return {
+      name: name,
+      experience: EXPERIENCE.indexOf(p.experience) !== -1 ? p.experience : 'Beginner',
+      goal: GOALS.indexOf(p.goal) !== -1 ? p.goal : 'Learn basics',
+      createdAt: num(p.createdAt, now())
+    };
+  }
+  function defaultSettings(){ return { fontSize:14, autoPair:true, ghost:true }; }
+  function sanitizeSettings(s){
+    var d = defaultSettings();
+    if (!isObj(s)) return d;
+    var fs = parseInt(s.fontSize, 10);
+    if (isFinite(fs)) d.fontSize = Math.max(12, Math.min(22, fs));
+    if (typeof s.autoPair === 'boolean') d.autoPair = s.autoPair;
+    if (typeof s.ghost === 'boolean') d.ghost = s.ghost;
+    return d;
+  }
+  function sanitizeSession(s){
+    var d = { openId:null, split:0.55 };
+    if (!isObj(s)) return d;
+    if (typeof s.openId === 'string') d.openId = s.openId;
+    if (typeof s.split === 'number' && isFinite(s.split)) d.split = Math.max(0.15, Math.min(0.85, s.split));
+    return d;
+  }
+  function sanitizeHistory(h){
+    if (!Array.isArray(h)) return [];
+    return h.filter(function(x){ return typeof x === 'string'; }).slice(-HISTORY_MAX);
+  }
+
+  /* ---- in-memory state ---- */
+  function freshState(){
+    return { files:{}, profile:null, settings:defaultSettings(), session:{ openId:null, split:0.55 }, app:{ createdAt:now(), lastExport:0 } };
+  }
+  var S = freshState();
+  var history = [];
+  var histIndex = 0;
+
+  var Store = {
+    mode:'memory', db:null, revision:0, lastSave:0, saveCount:0, lastError:'', idbError:'',
+    dirty:{}, deleted:{}, metaDirty:{}, appDirty:false,
+    timer:null, queue:Promise.resolve(), paused:false, pauseReason:'', failCount:0, retry:null,
+    legacyHistory:false, ready:false, channel:null, review:null, ind:'saved', errorNotice:false
+  };
+  function A(){ return Store.mode === 'idb' ? IDB : (Store.mode === 'local' ? LOC : MEM); }
+
+  function metaValue(k){
+    if (k === 'profile') return S.profile;
+    if (k === 'settings') return S.settings;
+    if (k === 'session') return S.session;
+    if (k === 'history') return history;
+    return null;
+  }
+  function filesList(){ return Object.keys(S.files).map(function(id){ return S.files[id]; }); }
+  function takenNames(){
+    var m = {};
+    filesList().forEach(function(f){ m[f.name.toLowerCase()] = 1; });
+    return m;
+  }
+  function findByName(name){
+    var l = name.toLowerCase();
+    var list = filesList();
+    for (var i = 0; i < list.length; i++){ if (list[i].name.toLowerCase() === l) return list[i]; }
+    return null;
+  }
+  function latestFileId(){
+    var best = null;
+    filesList().forEach(function(f){ if (!best || f.updatedAt > best.updatedAt) best = f; });
+    return best ? best.id : null;
+  }
+
+  /* ---- IndexedDB ---- */
+  function openDatabase(){
+    return new Promise(function(resolve, reject){
+      if (!window.indexedDB){ reject(new Error('IndexedDB is not available')); return; }
+      var done = false;
+      var timer = setTimeout(function(){ if (done) return; done = true; reject(new Error('IndexedDB timed out')); }, 5000);
+      var req;
+      try { req = indexedDB.open(DB_NAME, DB_VERSION); }
+      catch (e){ clearTimeout(timer); done = true; reject(e); return; }
+      req.onupgradeneeded = function(ev){
+        var db = req.result, old = ev.oldVersion;
+        if (old < 1){
+          db.createObjectStore('files', { keyPath:'id' });
+          db.createObjectStore('meta', { keyPath:'key' });
+          db.createObjectStore('snapshots', { keyPath:'id', autoIncrement:true });
+        }
+        /* future versions: add `if (old < 2){ ... }` steps here */
+      };
+      req.onsuccess = function(){
+        clearTimeout(timer);
+        if (done){ try { req.result.close(); } catch (e) {} return; }
+        done = true; resolve(req.result);
+      };
+      req.onerror = function(){ clearTimeout(timer); if (done) return; done = true; reject(req.error || new Error('IndexedDB open failed')); };
+    });
+  }
+
+  var IDB = {
+    load: function(){
+      return new Promise(function(resolve, reject){
+        var tx = Store.db.transaction(['files', 'meta'], 'readonly');
+        var out = { files:[], meta:{} };
+        tx.objectStore('files').getAll().onsuccess = function(e){ out.files = e.target.result || []; };
+        tx.objectStore('meta').getAll().onsuccess = function(e){
+          (e.target.result || []).forEach(function(r){ if (r && typeof r.key === 'string') out.meta[r.key] = r.value; });
+        };
+        tx.oncomplete = function(){ resolve(out); };
+        tx.onerror = tx.onabort = function(){ reject(tx.error || new Error('load failed')); };
+      });
+    },
+    commit: function(d){
+      return new Promise(function(resolve, reject){
+        var tx, conflict = false, newRev = 0;
+        try { tx = Store.db.transaction(['files', 'meta'], 'readwrite'); }
+        catch (e){ reject(e); return; }
+        var fs = tx.objectStore('files'), ms = tx.objectStore('meta');
+        var g = ms.get('app');
+        g.onsuccess = function(){
+          var rec = g.result;
+          var stored = (rec && rec.value && rec.value.revision) || 0;
+          if (stored !== Store.revision){ conflict = true; try { tx.abort(); } catch (e) {} return; }
+          newRev = stored + 1;
+          d.files.forEach(function(id){ if (S.files[id]) fs.put(S.files[id]); });
+          d.deleted.forEach(function(id){ fs.delete(id); });
+          d.meta.forEach(function(k){
+            var v = metaValue(k);
+            if (v === null || v === undefined) ms.delete(k); else ms.put({ key:k, value:v });
+          });
+          ms.put({ key:'app', value:{ schema:SCHEMA, revision:newRev, updatedAt:now(), createdAt:S.app.createdAt, lastExport:S.app.lastExport } });
+        };
+        tx.oncomplete = function(){ resolve({ revision:newRev }); };
+        tx.onabort = function(){
+          var e = new Error(conflict ? 'conflict' : ((tx.error && tx.error.message) || 'write aborted'));
+          e.conflict = conflict;
+          e.quota = !!(tx.error && tx.error.name === 'QuotaExceededError');
+          reject(e);
+        };
+      });
+    },
+    addSnapshot: function(rec){
+      return new Promise(function(resolve, reject){
+        var tx = Store.db.transaction('snapshots', 'readwrite');
+        var st = tx.objectStore('snapshots');
+        st.add(rec);
+        st.getAll().onsuccess = function(e){
+          var all = e.target.result || [];
+          all.sort(function(a, b){ return a.id - b.id; });
+          while (all.length > SNAP_MAX){ st.delete(all.shift().id); }
+        };
+        tx.oncomplete = function(){ resolve(); };
+        tx.onerror = tx.onabort = function(){ reject(tx.error || new Error('snapshot failed')); };
+      });
+    },
+    listSnapshots: function(){
+      return new Promise(function(resolve, reject){
+        var tx = Store.db.transaction('snapshots', 'readonly');
+        var out = [];
+        tx.objectStore('snapshots').getAll().onsuccess = function(e){ out = e.target.result || []; };
+        tx.oncomplete = function(){ out.sort(function(a, b){ return b.id - a.id; }); resolve(out); };
+        tx.onerror = tx.onabort = function(){ reject(tx.error || new Error('could not read snapshots')); };
+      });
+    },
+    wipe: function(all){
+      return new Promise(function(resolve, reject){
+        var names = ['files', 'meta'];
+        if (all) names.push('snapshots');
+        var tx = Store.db.transaction(names, 'readwrite');
+        names.forEach(function(n){ tx.objectStore(n).clear(); });
+        tx.oncomplete = function(){ resolve(); };
+        tx.onerror = tx.onabort = function(){ reject(tx.error || new Error('wipe failed')); };
+      });
+    }
+  };
+
+  /* ---- localStorage fallback (whole state in one key) ---- */
+  function serializeLocal(rev){
+    return {
+      schema:SCHEMA,
+      files:filesList(),
+      meta:{
+        app:{ schema:SCHEMA, revision:rev, updatedAt:now(), createdAt:S.app.createdAt, lastExport:S.app.lastExport },
+        profile:S.profile, settings:S.settings, session:S.session, history:history
+      }
+    };
+  }
+  function readSnaps(){
+    try { var a = JSON.parse(localStorage.getItem(LS_SNAPS) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  var LOC = {
+    load: function(){
+      var raw = localStorage.getItem(LS_DATA);
+      if (!raw) return { files:[], meta:{} };
+      try {
+        var o = JSON.parse(raw);
+        return { files:Array.isArray(o.files) ? o.files : [], meta:isObj(o.meta) ? o.meta : {} };
+      } catch (e) {
+        try { localStorage.setItem(LS_DATA + '.bad', raw); } catch (e2) {}
+        return { files:[], meta:{} };
+      }
+    },
+    commit: function(){
+      return new Promise(function(resolve, reject){
+        try {
+          var raw = localStorage.getItem(LS_DATA), stored = 0;
+          if (raw){ var o = JSON.parse(raw); stored = (o && o.meta && o.meta.app && o.meta.app.revision) || 0; }
+          if (stored !== Store.revision){ var c = new Error('conflict'); c.conflict = true; reject(c); return; }
+          var rev = stored + 1;
+          localStorage.setItem(LS_DATA, JSON.stringify(serializeLocal(rev)));
+          resolve({ revision:rev });
+        } catch (e){
+          e.quota = !!(e && (e.name === 'QuotaExceededError' || e.code === 22));
+          reject(e);
+        }
+      });
+    },
+    addSnapshot: function(rec){
+      return new Promise(function(resolve, reject){
+        try {
+          var list = readSnaps();
+          var maxId = 0;
+          list.forEach(function(s){ if (s.id > maxId) maxId = s.id; });
+          rec.id = maxId + 1;
+          list.push(rec);
+          while (list.length > SNAP_MAX) list.shift();
+          localStorage.setItem(LS_SNAPS, JSON.stringify(list));
+          resolve();
+        } catch (e){ reject(e); }
+      });
+    },
+    listSnapshots: function(){
+      return Promise.resolve(readSnaps().sort(function(a, b){ return b.id - a.id; }));
+    },
+    wipe: function(all){
+      return new Promise(function(resolve, reject){
+        try {
+          localStorage.removeItem(LS_DATA);
+          if (all) localStorage.removeItem(LS_SNAPS);
+          resolve();
+        } catch (e){ reject(e); }
+      });
+    }
+  };
+
+  /* ---- memory only (last resort; nothing persists) ---- */
+  var memSnaps = [];
+  var MEM = {
+    commit: function(){ return Promise.resolve({ revision:Store.revision + 1 }); },
+    addSnapshot: function(rec){
+      rec.id = (memSnaps.length ? memSnaps[0].id : 0) + 1;
+      memSnaps.unshift(rec);
+      memSnaps = memSnaps.slice(0, SNAP_MAX);
+      return Promise.resolve();
+    },
+    listSnapshots: function(){ return Promise.resolve(memSnaps.slice()); },
+    wipe: function(all){ if (all) memSnaps = []; return Promise.resolve(); }
+  };
+
+  /* ---- dirty tracking + save queue ---- */
+  function markFile(id){ Store.dirty[id] = 1; scheduleSave(); }
+  function markMeta(k){ Store.metaDirty[k] = 1; scheduleSave(); }
+  function markApp(){ Store.appDirty = true; scheduleSave(); }
+  function hasDirty(){
+    return !!(Object.keys(Store.dirty).length || Object.keys(Store.deleted).length || Object.keys(Store.metaDirty).length || Store.appDirty);
+  }
+  function takeDirty(){
+    var d = {
+      files: Object.keys(Store.dirty).filter(function(id){ return S.files[id]; }),
+      deleted: Object.keys(Store.deleted),
+      meta: Object.keys(Store.metaDirty),
+      app: Store.appDirty
+    };
+    d.any = !!(d.files.length || d.deleted.length || d.meta.length || d.app);
+    Store.dirty = {}; Store.deleted = {}; Store.metaDirty = {}; Store.appDirty = false;
+    return d;
+  }
+  function restoreDirty(d){
+    d.files.forEach(function(id){ Store.dirty[id] = 1; });
+    d.deleted.forEach(function(id){ Store.deleted[id] = 1; });
+    d.meta.forEach(function(k){ Store.metaDirty[k] = 1; });
+    if (d.app) Store.appDirty = true;
+  }
+
+  function setIndicator(state){
+    Store.ind = state;
+    saveInd.className = 'save-ind ' + state;
+    saveInd.textContent = { saved:'Saved', saving:'Saving…', failed:'Failed', paused:'Paused', memory:'Not saved' }[state] || state;
+  }
+  function showNotice(text, btnLabel){
+    noticeText.textContent = text;
+    if (btnLabel){ noticeBtn.textContent = btnLabel; noticeBtn.hidden = false; } else { noticeBtn.hidden = true; }
+    noticeEl.hidden = false;
+  }
+  function hideNotice(){ noticeEl.hidden = true; }
+  noticeBtn.addEventListener('click', function(){ location.reload(); });
+
+  function scheduleSave(){
+    if (Store.paused || !Store.ready) return;
+    setIndicator('saving');
+    if (Store.timer) clearTimeout(Store.timer);
+    Store.timer = setTimeout(function(){ Store.timer = null; commitState(); }, SAVE_DELAY);
+  }
+  function commitState(){
+    Store.queue = Store.queue.then(doCommit).catch(function(){});
+    return Store.queue;
+  }
+  function flushSave(){
+    if (Store.timer){ clearTimeout(Store.timer); Store.timer = null; }
+    return commitState();
+  }
+  function broadcast(msg){
+    if (!Store.channel) return;
+    msg.from = TAB_ID;
+    try { Store.channel.postMessage(msg); } catch (e) {}
+  }
+  function onExternalChange(why){
+    if (Store.paused) return;
+    Store.paused = true;
+    Store.pauseReason = why || 'another tab';
+    if (Store.timer){ clearTimeout(Store.timer); Store.timer = null; }
+    setIndicator('paused');
+    showNotice('Your data changed in another tab, so saving is paused here. Type export to keep unsaved work, then reload.', 'Reload');
+  }
+
+  function doCommit(){
+    if (Store.paused || !Store.ready) return Promise.resolve();
+    var d = takeDirty();
+    if (!d.any){
+      if (Store.ind === 'saving') setIndicator(Store.mode === 'memory' ? 'memory' : 'saved');
+      return Promise.resolve();
+    }
+    setIndicator('saving');
+    return A().commit(d).then(function(res){
+      Store.revision = res.revision;
+      Store.lastSave = now();
+      Store.saveCount++;
+      Store.lastError = '';
+      Store.failCount = 0;
+      if (!Store.paused) setIndicator(Store.mode === 'memory' ? 'memory' : 'saved');
+      if (Store.errorNotice && !Store.paused){ hideNotice(); Store.errorNotice = false; }
+      if (Store.legacyHistory){
+        try { localStorage.removeItem(LEGACY_HISTORY); } catch (e) {}
+        Store.legacyHistory = false;
+      }
+      broadcast({ t:'commit', rev:res.revision });
+      if (hasDirty()) scheduleSave();
+    }, function(err){
+      restoreDirty(d);
+      if (err && err.conflict){ onExternalChange('revision changed'); return; }
+      Store.lastError = errMsg(err);
+      Store.failCount++;
+      setIndicator('failed');
+      showNotice(err && err.quota
+        ? 'Storage is full. Type export to save a backup, then delete files you do not need.'
+        : 'Could not save: ' + Store.lastError + '. Type export to keep a backup.', null);
+      Store.errorNotice = true;
+      if (Store.failCount < 3){
+        if (Store.retry) clearTimeout(Store.retry);
+        Store.retry = setTimeout(scheduleSave, 5000);
+      }
+    });
+  }
+
+  /* ---- backup / snapshot payloads ---- */
+  function exportFileRecords(){
+    return filesList().sort(function(a, b){ return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); })
+      .map(function(f){ return { name:f.name, content:f.content, createdAt:f.createdAt, updatedAt:f.updatedAt }; });
+  }
+  function exportPayload(){
+    return {
+      _export:{ app:APP, schema:SCHEMA, exportedAt:new Date().toISOString(), name:S.profile ? S.profile.name : '' },
+      files:exportFileRecords(), profile:S.profile, settings:S.settings
+    };
+  }
+  function snapshotData(){ return { files:exportFileRecords(), profile:S.profile, settings:S.settings }; }
+  function makeSnapshot(reason){
+    var rec = { ts:now(), reason:reason, schemaVersion:SCHEMA, data:snapshotData() };
+    return A().addSnapshot(rec).then(function(){ return true; }, function(e){
+      Store.lastError = 'Snapshot failed: ' + errMsg(e);
+      return false;
+    });
+  }
+
+  function migrateData(obj, fromSchema){
+    /* upgrade ladder: add `if (fromSchema < 2){ ... }` steps when the schema changes */
+    return obj;
+  }
+  function readBody(o){
+    var sf = sanitizeFiles(Array.isArray(o.files) ? o.files : [], false);
+    return {
+      files:sf.files, skipped:sf.skipped,
+      profile:o.profile ? sanitizeProfile(o.profile) : null,
+      settings:o.settings ? sanitizeSettings(o.settings) : null
+    };
+  }
+  function inspectBackup(obj){
+    var r = { ok:false, error:'', warnings:[], files:[], skipped:0, profile:null, settings:null, exportedAt:'', by:'' };
+    if (!isObj(obj)){ r.error = 'That file is not a backup (expected a JSON object).'; return r; }
+    var h = obj._export;
+    if (!isObj(h) || h.app !== APP){ r.error = 'That file is not a python-v6 backup.'; return r; }
+    if (typeof h.schema === 'number' && h.schema > SCHEMA){
+      r.warnings.push('The backup comes from a newer version (schema ' + h.schema + '). Parts this version does not know are ignored.');
+    }
+    if (!Array.isArray(obj.files)){ r.error = 'The backup has no files list.'; return r; }
+    var b = readBody(migrateData(obj, typeof h.schema === 'number' ? h.schema : 1));
+    r.files = b.files; r.skipped = b.skipped; r.profile = b.profile; r.settings = b.settings;
+    r.exportedAt = typeof h.exportedAt === 'string' ? h.exportedAt : '';
+    r.by = typeof h.name === 'string' ? h.name : '';
+    r.ok = true;
+    return r;
+  }
+
+  /* ---- build in-memory state from what storage returned ---- */
+  function buildState(raw){
+    var meta = raw.meta || {};
+    var app = isObj(meta.app) ? meta.app : null;
+    S = freshState();
+    S.app.createdAt = num(app && app.createdAt, now());
+    S.app.lastExport = num(app && app.lastExport, 0);
+    Store.revision = (app && app.revision) || 0;
+    var sf = sanitizeFiles(Array.isArray(raw.files) ? raw.files : [], true);
+    sf.files.forEach(function(f){ S.files[f.id] = f; });
+    S.profile = sanitizeProfile(meta.profile);
+    S.settings = sanitizeSettings(meta.settings);
+    S.session = sanitizeSession(meta.session);
+    if (Array.isArray(meta.history)) {
+      history = sanitizeHistory(meta.history);
+    } else if (!app) {
+      /* first run of this database: move the old v5 history over */
+      try {
+        var legacy = JSON.parse(localStorage.getItem(LEGACY_HISTORY) || '[]');
+        history = sanitizeHistory(legacy);
+        if (history.length) Store.legacyHistory = true;
+      } catch (e) { history = []; }
+    } else { history = []; }
+    histIndex = history.length;
+    if (app && typeof app.schema === 'number' && app.schema > SCHEMA){
+      Store.paused = true;
+      Store.pauseReason = 'data from a newer version';
+    }
+  }
+
+  async function initStore(){
+    var raw = null;
+    try {
+      Store.db = await openDatabase();
+      Store.db.onversionchange = function(){ try { Store.db.close(); } catch (e) {} onExternalChange('database upgraded elsewhere'); };
+      raw = await IDB.load();
+      Store.mode = 'idb';
+    } catch (e){
+      Store.idbError = errMsg(e);
+      try {
+        localStorage.setItem(LS_DATA + '.probe', '1');
+        localStorage.removeItem(LS_DATA + '.probe');
+        raw = LOC.load();
+        Store.mode = 'local';
+      } catch (e2){
+        raw = { files:[], meta:{} };
+        Store.mode = 'memory';
+      }
+    }
+    buildState(raw);
+    Store.ready = true;
+    try {
+      if (typeof BroadcastChannel !== 'undefined'){
+        Store.channel = new BroadcastChannel(APP);
+        Store.channel.onmessage = function(ev){
+          var m = ev.data;
+          if (!m || m.from === TAB_ID) return;
+          if (m.t === 'wipe' || (m.t === 'commit' && m.rev > Store.revision)) onExternalChange('another tab wrote newer data');
+        };
+      }
+    } catch (e) {}
+    window.addEventListener('storage', function(ev){
+      if (Store.mode === 'local' && ev.key === LS_DATA) onExternalChange('another tab wrote newer data');
+    });
+  }
+
+  /* =====================================================================
+     FILES  (create / open / rename / delete / duplicate)
+     ===================================================================== */
+  function addFileRecord(name, content, createdAt, updatedAt){
+    var nm = uniqueName(name, takenNames());
+    var t = now();
+    var f = { id:newId(), name:nm, content:content, createdAt:createdAt || t, updatedAt:updatedAt || t, size:byteLen(content) };
+    S.files[f.id] = f;
+    Store.dirty[f.id] = 1;
+    scheduleSave();
+    return f;
+  }
+  function ensureFile(){
+    if (!filesList().length) addFileRecord('untitled.py', '');
+  }
+
+  var loadingFile = false;
+  function openFile(id){
+    var f = S.files[id];
+    if (!f) return false;
+    S.session.openId = id;
+    markMeta('session');
+    loadingFile = true;
+    codeEl.value = f.content;
+    codeEl.readOnly = false;
+    fileNameEl.textContent = f.name;
+    suggestBar.classList.remove('show');
+    updateHighlight();
+    loadingFile = false;
+    codeEl.scrollTop = 0; codeEl.scrollLeft = 0;
+    setCaret(0);
+    if (drawerOpen) renderDrawerList();
+    return true;
+  }
+  function onCodeChanged(){
+    if (loadingFile || !Store.ready) return;
+    var f = S.files[S.session.openId];
+    if (!f || f.content === codeEl.value) return;
+    f.content = codeEl.value;
+    f.updatedAt = now();
+    f.size = byteLen(f.content);
+    Store.dirty[f.id] = 1;
+    scheduleSave();
+  }
+  function createFile(rawName){
+    var nm = normalizeName(rawName);
+    if (!nm) return { error:'Give the file a name, for example: notes' };
+    if (findByName(nm)) return { error:nm + ' already exists.' };
+    if (filesList().length >= MAX_FILES) return { error:'File limit reached (' + MAX_FILES + ').' };
+    return { file:addFileRecord(nm, '') };
+  }
+  function renameFile(id, rawName){
+    var f = S.files[id];
+    if (!f) return 'No such file.';
+    var nm = normalizeName(rawName);
+    if (!nm) return 'Give the file a name, for example: notes';
+    var clash = findByName(nm);
+    if (clash && clash.id !== id) return nm + ' already exists.';
+    f.name = nm;
+    markFile(id);
+    if (S.session.openId === id) fileNameEl.textContent = nm;
+    if (drawerOpen) renderDrawerList();
+    return null;
+  }
+  function duplicateFile(id){
+    var f = S.files[id];
+    if (!f) return null;
+    var base = f.name.replace(/\.py$/i, '') + '-copy.py';
+    return addFileRecord(base, f.content);
+  }
+  function removeFile(id){
+    if (!S.files[id]) return;
+    delete S.files[id];
+    delete Store.dirty[id];
+    Store.deleted[id] = 1;
+    ensureFile();
+    if (S.session.openId === id || !S.files[S.session.openId]) openFile(latestFileId());
+    else scheduleSave();
+    if (drawerOpen) renderDrawerList();
+  }
+
+  /* apply already-sanitized data from an import or a snapshot */
+  function applyData(data, mode){
+    var added = 0, renamed = 0, skipped = 0;
+    if (mode === 'replace'){
+      Object.keys(S.files).forEach(function(id){ Store.deleted[id] = 1; delete Store.dirty[id]; });
+      S.files = {};
+      S.session.openId = null;
+      if (data.profile){ S.profile = data.profile; markMeta('profile'); }
+      if (data.settings){ S.settings = data.settings; markMeta('settings'); }
+    } else if (!S.profile && data.profile){
+      S.profile = data.profile; markMeta('profile');
+    }
+    data.files.forEach(function(f){
+      if (filesList().length >= MAX_FILES){ skipped++; return; }
+      var rec = addFileRecord(f.name, f.content, f.createdAt, f.updatedAt);
+      if (rec.name !== f.name) renamed++;
+      added++;
+    });
+    return { added:added, renamed:renamed, skipped:skipped };
+  }
+  function afterDataChange(){
+    ensureFile();
+    var id = S.session.openId;
+    if (!id || !S.files[id]) id = latestFileId();
+    openFile(id);
+    applySettings();
+    return flushSave();
+  }
+
+  /* =====================================================================
+     SETTINGS + PROFILE
+     ===================================================================== */
+  function applySettings(){
+    var fs = S.settings.fontSize;
+    document.documentElement.style.setProperty('--fs', fs + 'px');
+    document.documentElement.style.setProperty('--lh', (fs + 6) + 'px');
+    renderGhost();
+  }
+  var GHOST_LEVELS = {
+    Beginner:     { sum:true,  kws:['print','for','while','if','elif','def','class','try'], label:'full' },
+    Intermediate: { sum:false, kws:['for','while','if','def','class','try'], label:'some' },
+    Advanced:     { sum:false, kws:['def','class','try'], label:'few' }
+  };
+  function ghostLevel(){ return GHOST_LEVELS[(S.profile && S.profile.experience) || 'Beginner'] || GHOST_LEVELS.Beginner; }
+
+  function starterContent(p){
+    var name = p.name || 'Coder';
+    if (p.experience === 'Advanced'){
+      return '# ' + name + ' - starter\nfrom collections import Counter\n\n\ndef main():\n    words = "the quick brown fox jumps over the lazy dog the end".split()\n    print(Counter(words).most_common(3))\n\n\nif __name__ == "__main__":\n    main()\n';
+    }
+    if (p.experience === 'Intermediate'){
+      return '# ' + name + ' - starter\ndef greet(name):\n    return "Hello, " + name + "!"\n\n\nfor person in ["Ada", "Linus", "Guido"]:\n    print(greet(person))\n';
+    }
+    return '# Welcome, ' + name + '! Press the play button to run this.\nname = input("What is your name? ")\nprint("Hello,", name)\n';
+  }
+
+  var prof = null;
+  function openProfile(editing){
+    var p = S.profile || { name:'', experience:'Beginner', goal:'Learn basics' };
+    prof = {
+      step:1, editing:!!editing,
+      name:p.name, experience:p.experience, goal:p.goal,
+      fontSize:S.settings.fontSize, autoPair:S.settings.autoPair, ghost:S.settings.ghost
+    };
+    renderProfile();
+    profileEl.hidden = false;
+    setTimeout(function(){ var i = document.getElementById('p-name'); if (i) i.focus(); }, 60);
+  }
+  function chipHtml(attr, value, selected, label){
+    return '<button class="chip' + (selected ? ' sel' : '') + '" data-p="' + attr + '" data-v="' + escA(value) + '">' + esc(label || value) + '</button>';
+  }
+  function renderProfile(){
+    var h = '';
+    var title = prof.editing ? 'Edit profile' : 'Welcome to Python IDLE';
+    h += '<div class="p-head"><h2>' + title + '</h2><span class="p-step">' + prof.step + ' of 3</span></div>';
+    if (prof.step === 1){
+      h += '<p>Your files are saved in this browser and come back next time. Tell me who is coding.</p>';
+      h += '<div class="p-label">Your name</div>';
+      h += '<input id="p-name" class="p-input" type="text" maxlength="30" placeholder="Coder" value="' + escA(prof.name) + '" autocapitalize="words" autocomplete="off" autocorrect="off" spellcheck="false">';
+    } else if (prof.step === 2){
+      h += '<p>This sets your starter file and how many code suggestions appear.</p>';
+      h += '<div class="p-label">Experience</div><div class="chips">';
+      EXPERIENCE.forEach(function(x){ h += chipHtml('exp', x, prof.experience === x); });
+      h += '</div><div class="p-label">Goal</div><div class="chips">';
+      GOALS.forEach(function(x){ h += chipHtml('goal', x, prof.goal === x); });
+      h += '</div>';
+    } else {
+      h += '<p>Editor options apply straight away. You can change them later with whoami edit.</p>';
+      h += '<div class="p-label">Font size</div><div class="p-size"><button class="gbtn" data-p="fs" data-v="-1">A−</button><b>' + prof.fontSize + '</b><button class="gbtn" data-p="fs" data-v="1">A+</button></div>';
+      h += '<div class="p-label">Auto-pair brackets and quotes</div><div class="chips">' + chipHtml('pair', 'on', prof.autoPair, 'On') + chipHtml('pair', 'off', !prof.autoPair, 'Off') + '</div>';
+      h += '<div class="p-label">Code suggestions</div><div class="chips">' + chipHtml('ghost', 'on', prof.ghost, 'On') + chipHtml('ghost', 'off', !prof.ghost, 'Off') + '</div>';
+    }
+    h += '<div class="p-nav">';
+    if (prof.step > 1) h += '<button class="gbtn" data-p="back">Back</button>';
+    else if (prof.editing) h += '<button class="gbtn" data-p="cancel">Cancel</button>';
+    else h += '<span></span>';
+    h += '<button class="gbtn primary" data-p="next">' + (prof.step < 3 ? 'Next' : (prof.editing ? 'Save' : 'Start coding')) + '</button>';
+    h += '</div>';
+    pCard.innerHTML = h;
+  }
+  function finishProfile(){
+    var first = !S.profile;
+    var p = sanitizeProfile({ name:prof.name, experience:prof.experience, goal:prof.goal, createdAt:S.profile ? S.profile.createdAt : now() });
+    S.profile = p;
+    S.settings = sanitizeSettings({ fontSize:prof.fontSize, autoPair:prof.autoPair, ghost:prof.ghost });
+    markMeta('profile'); markMeta('settings');
+    applySettings();
+    profileEl.hidden = true;
+    if (first && !filesList().length){
+      var f = addFileRecord(STARTER_NAMES[p.goal] || 'main.py', starterContent(p));
+      openFile(f.id);
+    } else if (first && S.session.openId && S.files[S.session.openId]){
+      openFile(S.session.openId);
+    }
+    if (first) termPrint('Welcome, ' + p.name + '! Your files save automatically. Type help for commands.', 'l-sys');
+    else termPrint('Profile updated.', 'l-sys');
+    flushSave();
+  }
+  pCard.addEventListener('input', function(e){
+    if (e.target && e.target.id === 'p-name') prof.name = e.target.value;
+  });
+  pCard.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && e.target && e.target.id === 'p-name'){ e.preventDefault(); prof.step = 2; renderProfile(); }
+  });
+  pCard.addEventListener('click', function(e){
+    var b = e.target.closest('button');
+    if (!b) return;
+    var a = b.getAttribute('data-p'), v = b.getAttribute('data-v');
+    if (a === 'exp') prof.experience = v;
+    else if (a === 'goal') prof.goal = v;
+    else if (a === 'pair') prof.autoPair = (v === 'on');
+    else if (a === 'ghost') prof.ghost = (v === 'on');
+    else if (a === 'fs'){
+      prof.fontSize = Math.max(12, Math.min(22, prof.fontSize + parseInt(v, 10)));
+      S.settings.fontSize = prof.fontSize; applySettings();   /* live preview */
+    }
+    else if (a === 'back'){ prof.step--; }
+    else if (a === 'cancel'){
+      S.settings = sanitizeSettings(S.settings);
+      applySettings();
+      profileEl.hidden = true; return;
+    }
+    else if (a === 'next'){
+      if (prof.step < 3) prof.step++; else { finishProfile(); return; }
+    }
+    renderProfile();
+  });
+
+  /* =====================================================================
+     FILES DRAWER
+     ===================================================================== */
+  var drawerOpen = false;
+  var drawerState = { query:'', renaming:null, confirmDel:null, confirmTimer:null };
+  function openDrawer(){
+    drawerOpen = true;
+    drawerState.renaming = null; drawerState.confirmDel = null;
+    drawerEl.style.top = (topbarEl.offsetHeight + 4) + 'px';
+    drawerEl.hidden = false; scrimEl.hidden = false;
+    dNewRow.hidden = true; dMsg.hidden = true;
+    dSearch.value = drawerState.query = '';
+    renderDrawerList();
+  }
+  function closeDrawer(){
+    drawerOpen = false;
+    drawerEl.hidden = true; scrimEl.hidden = true;
+    if (document.activeElement && drawerEl.contains(document.activeElement)) document.activeElement.blur();
+  }
+  function drawerMessage(t){ if (t){ dMsg.textContent = t; dMsg.hidden = false; } else { dMsg.hidden = true; } }
+  function renderDrawerList(){
+    var q = drawerState.query.toLowerCase();
+    var arr = filesList().filter(function(f){ return !q || f.name.toLowerCase().indexOf(q) !== -1; })
+      .sort(function(a, b){ return b.updatedAt - a.updatedAt; });
+    if (!arr.length){ dList.innerHTML = '<div class="d-empty">' + (q ? 'No file matches your search.' : 'No files yet. Tap + New to start.') + '</div>'; return; }
+    dList.innerHTML = arr.map(function(f){
+      if (drawerState.renaming === f.id){
+        return '<div class="d-row" data-id="' + f.id + '"><input class="d-ren" type="text" maxlength="60" value="' + escA(f.name.replace(/\.py$/i, '')) + '" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"><span class="d-ext">.py</span><button class="gbtn primary" data-d="rensave">Save</button><button class="gbtn" data-d="rencancel">✕</button></div>';
+      }
+      var del = drawerState.confirmDel === f.id;
+      return '<div class="d-row' + (f.id === S.session.openId ? ' cur' : '') + '" data-id="' + f.id + '">' +
+        '<button class="d-name" data-d="open">' + esc(f.name) + '<small>' + fmtBytes(f.size || byteLen(f.content)) + ' · edited ' + fmtDate(f.updatedAt) + '</small></button>' +
+        '<button class="gbtn" data-d="ren" title="Rename">✎</button>' +
+        '<button class="gbtn" data-d="dup" title="Duplicate">⧉</button>' +
+        '<button class="gbtn' + (del ? ' danger' : '') + '" data-d="del" title="Delete">' + (del ? 'Delete?' : '✕') + '</button></div>';
+    }).join('');
+    if (drawerState.renaming){
+      var inp = dList.querySelector('.d-ren');
+      if (inp){ inp.focus(); inp.select(); }
+    }
+  }
+  function drawerCreate(){
+    var r = createFile(dNew.value);
+    if (r.error){ drawerMessage(r.error); return; }
+    drawerMessage('');
+    dNew.value = ''; dNewRow.hidden = true;
+    openFile(r.file.id);
+    closeDrawer();
+  }
+  function drawerRenameSave(id, row){
+    var inp = row.querySelector('.d-ren');
+    var e = renameFile(id, inp ? inp.value : '');
+    if (e){ drawerMessage(e); return; }
+    drawerMessage('');
+    drawerState.renaming = null;
+    renderDrawerList();
+  }
+  fileBtn.addEventListener('click', function(){ if (drawerOpen) closeDrawer(); else openDrawer(); });
+  scrimEl.addEventListener('click', closeDrawer);
+  dSearch.addEventListener('input', function(){ drawerState.query = dSearch.value; renderDrawerList(); });
+  drawerEl.addEventListener('keydown', function(e){
+    var t = e.target;
+    if (e.key === 'Enter' && t === dNew){ e.preventDefault(); drawerCreate(); }
+    else if (e.key === 'Escape'){
+      if (t === dNew){ dNewRow.hidden = true; drawerMessage(''); }
+      else if (t && t.classList && t.classList.contains('d-ren')){ drawerState.renaming = null; drawerMessage(''); renderDrawerList(); }
+      else closeDrawer();
+    }
+    else if (e.key === 'Enter' && t && t.classList && t.classList.contains('d-ren')){
+      e.preventDefault();
+      drawerRenameSave(drawerState.renaming, t.closest('.d-row'));
+    }
+  });
+  drawerEl.addEventListener('click', function(e){
+    var b = e.target.closest('button');
+    if (!b) return;
+    var act = b.getAttribute('data-d');
+    var row = b.closest('.d-row');
+    var id = row ? row.getAttribute('data-id') : null;
+    if (act === 'new'){ dNewRow.hidden = false; drawerMessage(''); dNew.value = ''; dNew.focus(); return; }
+    if (act === 'cancelnew'){ dNewRow.hidden = true; drawerMessage(''); return; }
+    if (act === 'create'){ drawerCreate(); return; }
+    if (act === 'open'){ if (id && S.files[id]){ openFile(id); closeDrawer(); } return; }
+    if (act === 'ren'){ drawerState.renaming = id; drawerState.confirmDel = null; drawerMessage(''); renderDrawerList(); return; }
+    if (act === 'rencancel'){ drawerState.renaming = null; drawerMessage(''); renderDrawerList(); return; }
+    if (act === 'rensave'){ drawerRenameSave(id, row); return; }
+    if (act === 'dup'){
+      var f = duplicateFile(id);
+      if (f) drawerMessage('');
+      renderDrawerList();
+      return;
+    }
+    if (act === 'del'){
+      if (drawerState.confirmDel === id){
+        clearTimeout(drawerState.confirmTimer);
+        drawerState.confirmDel = null;
+        removeFile(id);
+      } else {
+        drawerState.confirmDel = id;
+        clearTimeout(drawerState.confirmTimer);
+        drawerState.confirmTimer = setTimeout(function(){ drawerState.confirmDel = null; if (drawerOpen) renderDrawerList(); }, 3000);
+        renderDrawerList();
+      }
+      return;
+    }
+  });
+
+  /* ---------------- terminal-driven input() bridge ---------------- */
+  /* Python's input() is redefined (see initPyodide) as an async function that
+     awaits this JS promise. While it's pending, the Terminal's own prompt/input
+     row is repurposed to show the input() prompt and collect the typed value —
+     whether input() was called from a running script or typed directly at the
+     REPL, the answer always comes from the same Terminal input box. */
+  var pendingInputResolve = null;
+  var pendingPromptRestore = '>>>';
+  function get_terminal_input(promptText){
+    return new Promise(function(resolve){
+      pendingPromptRestore = termPrompt.textContent;
+      pendingInputResolve = resolve;
+      termPrompt.textContent = promptText || '';
+      termInput.value = '';
+      termInput.focus();
+    });
+  }
+  window.get_terminal_input = get_terminal_input;
+
+  /* Rewrites bare `input(` calls to `await input(` so they can suspend inside
+     Pyodide's top-level-await support, while skipping `.input(`, already-awaited
+     calls, and anything inside strings/comments. */
+  function injectAwaitInput(src){
+    if (src.indexOf('input') === -1) return src;
+    var out = '';
+    var i = 0, n = src.length, inStr = null;
+    while (i < n){
+      var c = src[i];
+      if (inStr){
+        if (inStr.length === 1 && c === '\\' && i + 1 < n){ out += c + src[i+1]; i += 2; continue; }
+        if (inStr.length === 1 && c === inStr){ out += c; inStr = null; i++; continue; }
+        if (inStr.length === 3 && src.substr(i, 3) === inStr){ out += inStr; inStr = null; i += 3; continue; }
+        out += c; i++; continue;
+      }
+      if (c === '#'){
+        var nl = src.indexOf('\n', i);
+        if (nl === -1){ out += src.slice(i); i = n; } else { out += src.slice(i, nl); i = nl; }
+        continue;
+      }
+      if (c === '"' || c === "'"){
+        var triple = src.substr(i, 3) === c + c + c;
+        inStr = triple ? c + c + c : c;
+        out += inStr; i += inStr.length; continue;
+      }
+      var isWordStart = /[A-Za-z_]/.test(c) && (i === 0 || !/[A-Za-z0-9_.]/.test(src[i - 1]));
+      if (isWordStart && src.substr(i, 5) === 'input'){
+        var j = i + 5;
+        while (j < n && /\s/.test(src[j])) j++;
+        if (src[j] === '('){
+          var k = out.length - 1;
+          while (k >= 0 && /\s/.test(out[k])) k--;
+          var precededByAwait = out.slice(Math.max(0, k - 4), k + 1) === 'await';
+          if (!precededByAwait){
+            out += 'await input';
+            i += 5;
+            continue;
+          }
+        }
+      }
+      out += c; i++;
+    }
+    return out;
+  }
+
+  /* ---------------- keyboard-aware layout ---------------- */
+  function applyViewportHeight(){
+    var h = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    appEl.style.height = h + 'px';
+    window.scrollTo(0, 0);
+    layoutSplit();
+  }
+  if (window.visualViewport){
+    window.visualViewport.addEventListener('resize', applyViewportHeight);
+    window.visualViewport.addEventListener('scroll', applyViewportHeight);
+  }
+  window.addEventListener('resize', applyViewportHeight);
+
+  /* ---------------- draggable split between Script / Terminal ---------------- */
+  var splitRatio = 0.55;
+  function layoutSplit(){
+    var dividerH = divider.offsetHeight || 16;
+    var total = viewsEl.clientHeight - dividerH;
+    if (total <= 0) return;
+    var minPx = 70;
+    var scriptH = Math.max(minPx, Math.min(total - minPx, total * splitRatio));
+    viewScript.style.height = scriptH + 'px';
+    viewTerminal.style.height = (total - scriptH) + 'px';
+  }
+  var dragging = false;
+  divider.addEventListener('pointerdown', function(e){
+    dragging = true;
+    divider.setPointerCapture(e.pointerId);
+  });
+  divider.addEventListener('pointermove', function(e){
+    if (!dragging) return;
+    var rect = viewsEl.getBoundingClientRect();
+    var dividerH = divider.offsetHeight || 16;
+    var total = rect.height - dividerH;
+    var newScriptH = e.clientY - rect.top;
+    splitRatio = Math.max(0.15, Math.min(0.85, newScriptH / total));
+    layoutSplit();
+  });
+  function endDrag(){
+    if (!dragging) return;
+    dragging = false;
+    S.session.split = splitRatio;
+    markMeta('session');
+  }
+  divider.addEventListener('pointerup', endDrag);
+  divider.addEventListener('pointercancel', endDrag);
+
+  /* ---------------- keyword / builtin lists ---------------- */
+  var KEYWORDS = ["False","None","True","and","as","assert","async","await","break",
+    "class","continue","def","del","elif","else","except","finally","for","from",
+    "global","if","import","in","is","lambda","nonlocal","not","or","pass","raise",
+    "return","try","while","with","yield"];
+  var BUILTINS = ["print","len","range","input","int","str","float","list","dict",
+    "set","tuple","bool","type","open","enumerate","zip","map","filter","sum","min",
+    "max","sorted","reversed","abs","round","isinstance","super","object","Exception",
+    "self"];
+  var ALL_WORDS = KEYWORDS.concat(BUILTINS);
+  var STMT_KEYWORD_RE = /^(import|from|def|class|for|while|if|elif|else|try|except|finally|with|return|pass|break|continue|global|nonlocal|del|raise|assert|async)\b/;
+
+  /* ---------------- html escape ---------------- */
+  function esc(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function escA(s){
+    return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  /* ---------------- syntax highlighter (regex based) ---------------- */
+  var TOKEN_RE = /(#.*$)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(\b\d+\.?\d*\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)/gm;
+
+  function highlight(src){
+    var out = '';
+    var lastIndex = 0;
+    var m;
+    TOKEN_RE.lastIndex = 0;
+    while ((m = TOKEN_RE.exec(src)) !== null){
+      out += esc(src.slice(lastIndex, m.index));
+      if (m[1] !== undefined){ out += '<span class="com">' + esc(m[1]) + '</span>'; }
+      else if (m[2] !== undefined){ out += '<span class="str">' + esc(m[2]) + '</span>'; }
+      else if (m[3] !== undefined){ out += '<span class="num">' + esc(m[3]) + '</span>'; }
+      else if (m[4] !== undefined){
+        var w = m[4];
+        if (KEYWORDS.indexOf(w) !== -1){ out += '<span class="kw">' + esc(w) + '</span>'; }
+        else if (BUILTINS.indexOf(w) !== -1){ out += '<span class="fn">' + esc(w) + '</span>'; }
+        else { out += esc(w); }
+      }
+      lastIndex = TOKEN_RE.lastIndex;
+    }
+    out += esc(src.slice(lastIndex));
+    return out;
+  }
+
+  /* ---------------- inline ghost-text suggestions (Copilot-style, rule based) ---------------- */
+  /* Runs entirely offline/on-device — no AI call. It predicts from a small set of
+     common patterns (e.g. two int(input()) lines -> suggest summing them and
+     printing the result) plus single-keyword snippets (print/for/if/def/...).
+     A suggestion only appears when the caret sits at the very end of the code,
+     shown as dim italic text right after what you've typed; press Tab to accept it.
+     v6: the profile's experience level decides how many rules are active, and the
+     editor option "Code suggestions" can switch them off. */
+  var ghostEl = document.getElementById('ghost');
+  var currentSuggestion = null;
+
+  function computeGhostSuggestion(){
+    if (!S.settings.ghost) return null;
+    if (codeEl.selectionStart !== codeEl.value.length || codeEl.selectionEnd !== codeEl.value.length) return null;
+    var lvl = ghostLevel();
+    var text = codeEl.value;
+    var lines = text.split('\n');
+    var lastLine = lines[lines.length - 1];
+    var trimmedLast = lastLine.trim();
+
+    if (trimmedLast === ''){
+      if (!lvl.sum) return null;
+      var nonEmpty = lines.filter(function(l){ return l.trim() !== ''; });
+      if (nonEmpty.length >= 2){
+        var l1 = nonEmpty[nonEmpty.length - 2].trim();
+        var l2 = nonEmpty[nonEmpty.length - 1].trim();
+        var m1 = l1.match(/^([A-Za-z_]\w*)\s*=\s*(?:int|float)\(\s*input\(/);
+        var m2 = l2.match(/^([A-Za-z_]\w*)\s*=\s*(?:int|float)\(\s*input\(/);
+        if (m1 && m2 && m1[1] !== m2[1]){
+          return 'total = ' + m1[1] + ' + ' + m2[1] + '\nprint(total)';
+        }
+      }
+      return null;
+    }
+
+    if (lastLine !== trimmedLast) return null; /* keyword must be at column 0 of its own indent, no trailing junk */
+    var snippets = {
+      'print': '("Hello, World!")',
+      'for':   ' i in range(10):\n    ',
+      'while': ' True:\n    ',
+      'if':    ' condition:\n    ',
+      'elif':  ' condition:\n    ',
+      'def':   ' function_name():\n    ',
+      'class': ' ClassName:\n    def __init__(self):\n        ',
+      'try':   ':\n    pass\nexcept Exception as e:\n    print(e)'
+    };
+    if (lvl.kws.indexOf(trimmedLast) !== -1 && Object.prototype.hasOwnProperty.call(snippets, trimmedLast)){
+      return snippets[trimmedLast];
+    }
+    return null;
+  }
+
+  function renderGhost(){
+    var suggestion = computeGhostSuggestion();
+    currentSuggestion = suggestion;
+    if (!suggestion){ ghostEl.innerHTML = ''; return; }
+    ghostEl.innerHTML = esc(codeEl.value) + '<span class="gs">' + esc(suggestion) + '</span>';
+  }
+
+  function acceptGhostSuggestion(){
+    if (!currentSuggestion) return false;
+    var insertion = currentSuggestion;
+    codeEl.value = codeEl.value + insertion;
+    setCaret(codeEl.value.length);
+    currentSuggestion = null;
+    ghostEl.innerHTML = '';
+    updateHighlight();
+    return true;
+  }
+
+  function updateGutter(){
+    var lines = codeEl.value.split('\n').length;
+    var s = '';
+    for (var i = 1; i <= lines; i++){ s += i + '\n'; }
+    gutterEl.textContent = s;
+  }
+
+  function updateHighlight(){
+    hlEl.innerHTML = highlight(codeEl.value) + '\n';
+    updateGutter();
+    if (syncCode) syncCode();
+    renderGhost();
+    onCodeChanged();          /* v6: every edit path ends here, so this is the autosave hook */
+  }
+
+  codeEl.addEventListener('scroll', function(){
+    document.getElementById('highlight').scrollTop = codeEl.scrollTop;
+    document.getElementById('highlight').scrollLeft = codeEl.scrollLeft;
+    ghostEl.scrollTop = codeEl.scrollTop;
+    ghostEl.scrollLeft = codeEl.scrollLeft;
+    gutterEl.scrollTop = codeEl.scrollTop;
+  });
+  codeEl.addEventListener('keyup', renderGhost);
+  codeEl.addEventListener('click', renderGhost);
+  codeEl.addEventListener('focus', function(){ lastFocus = 'script'; });
+  termInput.addEventListener('focus', function(){ lastFocus = 'terminal'; suggestBar.classList.remove('show'); });
+
+  /* ---------------- smart indent helpers ---------------- */
+  function currentLineStart(text, pos){
+    var i = text.lastIndexOf('\n', pos - 1);
+    return i === -1 ? 0 : i + 1;
+  }
+  function leadingWhitespace(line){
+    var m = line.match(/^[ \t]*/);
+    return m ? m[0] : '';
+  }
+  function setCaret(pos){
+    codeEl.selectionStart = codeEl.selectionEnd = pos;
+  }
+  function insertAt(text, pos, str){
+    return text.slice(0, pos) + str + text.slice(pos);
+  }
+
+  var PAIRS = { '(':')', '[':']', '{':'}', '"':'"', "'":"'" };
+  var CLOSERS = { ')':1, ']':1, '}':1, '"':1, "'":1 };
+
+  /* ---------------- robust auto-pair (diff based, works with mobile virtual keyboards) ---------------- */
+  function attachAutoPair(el, afterChange){
+    var prevValue = el.value;
+    var prevSelStart = el.selectionStart;
+    function sync(){ prevValue = el.value; prevSelStart = el.selectionStart; }
+    el.addEventListener('input', function(){
+      var val = el.value;
+      var caret = el.selectionStart;
+      if (S.settings.autoPair && val.length === prevValue.length + 1 && caret === prevSelStart + 1){
+        var inserted = val[prevSelStart];
+        if (PAIRS[inserted]){
+          var closer = PAIRS[inserted];
+          val = val.slice(0, caret) + closer + val.slice(caret);
+          el.value = val;
+          el.selectionStart = el.selectionEnd = caret;
+        } else if (CLOSERS[inserted] && prevValue[prevSelStart] === inserted){
+          val = val.slice(0, prevSelStart) + val.slice(prevSelStart + 1);
+          el.value = val;
+          el.selectionStart = el.selectionEnd = prevSelStart + 1;
+        }
+      }
+      sync();
+      if (afterChange) afterChange();
+    });
+    el.addEventListener('keyup', sync);
+    el.addEventListener('click', sync);
+    return sync;
+  }
+
+  var syncCode = null;
+  syncCode = attachAutoPair(codeEl, function(){ updateHighlight(); updateSuggestions(); });
+  attachAutoPair(termInput, null);
+
+  codeEl.addEventListener('keydown', function(e){
+    var start = codeEl.selectionStart;
+    var end = codeEl.selectionEnd;
+    var val = codeEl.value;
+
+    if (e.key === 'Tab'){
+      e.preventDefault();
+      if (acceptGhostSuggestion()) return;
+      if (start === end){
+        codeEl.value = insertAt(val, start, '    ');
+        setCaret(start + 4);
+      } else {
+        var lineStart = currentLineStart(val, start);
+        var block = val.slice(lineStart, end);
+        var linesArr = block.split('\n');
+        if (e.shiftKey){
+          linesArr = linesArr.map(function(l){ return l.replace(/^( {1,4}|\t)/, ''); });
+        } else {
+          linesArr = linesArr.map(function(l){ return '    ' + l; });
+        }
+        var newBlock = linesArr.join('\n');
+        codeEl.value = val.slice(0, lineStart) + newBlock + val.slice(end);
+        setCaret(lineStart + newBlock.length);
+      }
+      updateHighlight();
+      return;
+    }
+
+    if (e.key === 'Enter'){
+      e.preventDefault();
+      var lineStart2 = currentLineStart(val, start);
+      var line = val.slice(lineStart2, start);
+      var indent = leadingWhitespace(line);
+      var trimmed = line.trim();
+      if (trimmed.endsWith(':')){ indent += '    '; }
+      else if (/^(return|pass|break|continue|raise)\b/.test(trimmed) && indent.length >= 4){
+        indent = indent.slice(0, indent.length - 4);
+      }
+      var insertion = '\n' + indent;
+      codeEl.value = insertAt(val, start, insertion);
+      setCaret(start + insertion.length);
+      updateHighlight();
+      return;
+    }
+
+    if (e.key === 'Backspace' && start === end && start > 0){
+      var lineStart3 = currentLineStart(val, start);
+      var before = val.slice(lineStart3, start);
+      if (before.length > 0 && before.length % 4 === 0 && /^ +$/.test(before)){
+        e.preventDefault();
+        codeEl.value = val.slice(0, start - 4) + val.slice(start);
+        setCaret(start - 4);
+        updateHighlight();
+        return;
+      }
+    }
+  });
+
+  /* ---------------- autocomplete suggestions ---------------- */
+  function getUserNames(){
+    var names = {};
+    var re = /\b(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)|\b([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/g;
+    var m;
+    while ((m = re.exec(codeEl.value)) !== null){
+      var n = m[1] || m[2];
+      if (n) names[n] = true;
+    }
+    return Object.keys(names);
+  }
+
+  function currentWordInfo(el){
+    var pos = el.selectionStart;
+    var val = el.value;
+    var i = pos;
+    while (i > 0 && /[A-Za-z0-9_]/.test(val[i - 1])) i--;
+    return { start: i, end: pos, word: val.slice(i, pos) };
+  }
+
+  function updateSuggestions(){
+    var info = currentWordInfo(codeEl);
+    renderSuggestions(info.word, function(pick){
+      var val = codeEl.value;
+      codeEl.value = val.slice(0, info.start) + pick + val.slice(info.end);
+      setCaret(info.start + pick.length);
+      updateHighlight();
+      updateSuggestions();
+      codeEl.focus();
+    });
+  }
+
+  function renderSuggestions(word, onPick){
+    suggestBar.innerHTML = '';
+    if (!word || word.length < 1){ suggestBar.classList.remove('show'); return; }
+    var pool = ALL_WORDS.concat(getUserNames());
+    var lower = word.toLowerCase();
+    var prefixMatches = [];
+    var substrMatches = [];
+    for (var i = 0; i < pool.length; i++){
+      var w = pool[i];
+      if (w === word) continue;
+      var wl = w.toLowerCase();
+      if (wl.indexOf(lower) === 0){ if (prefixMatches.indexOf(w) === -1) prefixMatches.push(w); }
+      else if (wl.indexOf(lower) !== -1){ if (substrMatches.indexOf(w) === -1) substrMatches.push(w); }
+    }
+    var matches = prefixMatches.concat(substrMatches).slice(0, 8);
+    if (matches.length === 0){ suggestBar.classList.remove('show'); return; }
+    matches.forEach(function(w){
+      var b = document.createElement('button');
+      b.textContent = w;
+      b.addEventListener('click', function(){ onPick(w); });
+      suggestBar.appendChild(b);
+    });
+    suggestBar.classList.add('show');
+  }
+
+  /* ---------------- symbol bar (acts on whichever panel was last focused) ---------------- */
+  symBar.addEventListener('click', function(e){
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    var target = (lastFocus === 'terminal') ? termInput : codeEl;
+    var ins = btn.getAttribute('data-ins');
+    var act = btn.getAttribute('data-act');
+
+    if (ins !== null){
+      var s = target.selectionStart, en = target.selectionEnd;
+      var v = target.value;
+      if (S.settings.autoPair && CLOSERS[ins] && v[s] === ins){
+        /* tapping a symbol that's already the very next character — hop over it instead of duplicating */
+        target.selectionStart = target.selectionEnd = s + 1;
+      } else if (S.settings.autoPair && PAIRS[ins] && s === en){
+        var closer = PAIRS[ins];
+        target.value = v.slice(0, s) + ins + closer + v.slice(en);
+        target.selectionStart = target.selectionEnd = s + ins.length;
+      } else {
+        target.value = v.slice(0, s) + ins + v.slice(en);
+        target.selectionStart = target.selectionEnd = s + ins.length;
+      }
+      if (target === codeEl) updateHighlight();
+      target.focus();
+      return;
+    }
+    if (act === 'tab'){
+      if (target === codeEl && acceptGhostSuggestion()){ target.focus(); return; }
+      var s2 = target.selectionStart, e2 = target.selectionEnd;
+      var v2 = target.value;
+      target.value = v2.slice(0, s2) + '    ' + v2.slice(e2);
+      target.selectionStart = target.selectionEnd = s2 + 4;
+      if (target === codeEl) updateHighlight();
+      target.focus();
+      return;
+    }
+    if (act === 'left' || act === 'right'){
+      var p = target.selectionStart;
+      var np = act === 'left' ? Math.max(0, p - 1) : Math.min(target.value.length, p + 1);
+      target.selectionStart = target.selectionEnd = np;
+      if (target === codeEl) renderGhost();
+      target.focus();
+      return;
+    }
+    if (act === 'up' || act === 'down'){
+      if (lastFocus === 'terminal'){
+        navigateHistory(act === 'up' ? -1 : 1);
+      } else {
+        moveLine(target, act === 'up' ? -1 : 1);
+        renderGhost();
+      }
+      target.focus();
+      return;
+    }
+  });
+
+  function moveLine(el, dir){
+    var val = el.value;
+    var pos = el.selectionStart;
+    var lineStart = currentLineStart(val, pos);
+    var col = pos - lineStart;
+    if (dir === -1){
+      if (lineStart === 0) return;
+      var prevStart = currentLineStart(val, lineStart - 1);
+      var newPos = Math.min(prevStart + col, lineStart - 1);
+      el.selectionStart = el.selectionEnd = newPos;
+    } else {
+      var nextNL = val.indexOf('\n', lineStart);
+      if (nextNL === -1) return;
+      var nextLineStart = nextNL + 1;
+      var nextLineEnd = val.indexOf('\n', nextLineStart);
+      if (nextLineEnd === -1) nextLineEnd = val.length;
+      var newPos2 = Math.min(nextLineStart + col, nextLineEnd);
+      el.selectionStart = el.selectionEnd = newPos2;
+    }
+  }
+
+  clearScriptBtn.addEventListener('click', function(){
+    codeEl.value = '';
+    updateHighlight();
+    codeEl.focus();
+  });
+  clearTermBtn.addEventListener('click', function(){
+    termOutput.innerHTML = '';
+  });
+
+  /* ---------------- terminal output helpers ---------------- */
+  function termPrint(text, cls){
+    var div = document.createElement('div');
+    if (cls) div.className = cls;
+    div.textContent = text;
+    termOutput.appendChild(div);
+    termOutput.scrollTop = termOutput.scrollHeight;
+  }
+  function say(t){ termPrint(t); }
+  function sys(t){ termPrint(t, 'l-sys'); }
+  function bad(t){ termPrint(t, 'l-err'); }
+  function usage(t){ termPrint('usage: ' + t, 'l-err'); }
+
+  /* ---------------- pyodide setup ---------------- */
+  async function initPyodide(){
+    try {
+      pyodide = await loadPyodide();
+      pyodide.setStdout({ batched: function(s){ termPrint(s); } });
+      pyodide.setStderr({ batched: function(s){ termPrint(s, 'l-err'); } });
+      await pyodide.runPythonAsync(
+        "import builtins, js\n" +
+        "async def _mobile_input(prompt=''):\n" +
+        "    return await js.get_terminal_input(str(prompt))\n" +
+        "builtins.input = _mobile_input\n"
+      );
+      pyodideReady = true;
+      runBtn.disabled = false;
+      statusEl.textContent = 'Python ready';
+      setTimeout(function(){ statusEl.classList.add('hidden'); }, 1200);
+      termPrint('Python (Pyodide) ready. Type code below and press Enter. Type help for commands.', 'l-sys');
+    } catch (err){
+      statusEl.textContent = 'Python engine offline — files and storage still work, Run needs internet.';
+    }
+  }
+  initPyodide();
+
+  /* ---------------- run script (output goes straight into the visible Terminal panel) ---------------- */
+  runBtn.addEventListener('click', async function(){
+    if (!pyodideReady) return;
+    await flushSave();                       /* v6: the file is on disk before it runs */
+    var code = injectAwaitInput(codeEl.value);
+    runBtn.disabled = true;
+    termPrint('==== running script ====', 'l-sys');
+    try {
+      await pyodide.runPythonAsync(code);
+    } catch (err){
+      termPrint(String(err.message || err), 'l-err');
+    }
+    termPrint('==== finished ====', 'l-sys');
+    runBtn.disabled = false;
+  });
+
+  /* ---------------- REPL logic ---------------- */
+  var buffer = '';
+
+  function saveHistory(){ markMeta('history'); }
+  function pushHistory(line){
+    if (line.trim() === '') return;
+    if (history.length && history[history.length - 1] === line) return;
+    history.push(line);
+    if (history.length > HISTORY_MAX) history.splice(0, history.length - HISTORY_MAX);
+    saveHistory();
+  }
+
+  function isBalanced(s){
+    var stack = [];
+    var pairsClose = { '(':')', '[':']', '{':'}' };
+    var inStr = null;
+    for (var i = 0; i < s.length; i++){
+      var c = s[i];
+      if (inStr){
+        if (c === '\\'){ i++; continue; }
+        if (c === inStr) inStr = null;
+        continue;
+      }
+      if (c === '"' || c === "'"){ inStr = c; continue; }
+      if (pairsClose[c]){ stack.push(pairsClose[c]); }
+      else if (c === ')' || c === ']' || c === '}'){
+        if (stack.length === 0 || stack.pop() !== c) return true;
+      }
+    }
+    return stack.length === 0;
+  }
+
+  function needsMore(fullBuffer){
+    var trimmed = fullBuffer.replace(/\s+$/,'');
+    if (trimmed.endsWith('\\')) return true;
+    if (!isBalanced(fullBuffer)) return true;
+    var lastLine = fullBuffer.split('\n').filter(function(l){return l.length>0;}).pop() || '';
+    if (lastLine.trim().endsWith(':')) return true;
+    if (fullBuffer.indexOf('\n') !== -1){
+      var lines = fullBuffer.split('\n');
+      var last = lines[lines.length - 1];
+      if (last.trim() !== '') {
+        var hasIndentedBody = lines.some(function(l){ return /^[ \t]+\S/.test(l); });
+        if (hasIndentedBody) return true;
+      }
+    }
+    return false;
+  }
+
+  function isSimpleExpr(code){
+    if (code.indexOf('\n') !== -1) return false;
+    var trimmed = code.trim();
+    if (!trimmed) return false;
+    if (trimmed.endsWith(':')) return false;
+    if (STMT_KEYWORD_RE.test(trimmed)) return false;
+    var withoutCmp = trimmed.replace(/==|!=|<=|>=|:=/g, '');
+    if (/(^|[^=!<>])=([^=]|$)/.test(withoutCmp)) return false;
+    return true;
+  }
+
+  async function runReplChunk(code){
+    var transformed = injectAwaitInput(code);
+    try {
+      if (isSimpleExpr(code)){
+        var wrapped = "_repl_val_ = (" + transformed + ")\nrepr(_repl_val_) if _repl_val_ is not None else None";
+        var r = await pyodide.runPythonAsync(wrapped);
+        if (typeof r === 'string'){ termPrint(r); }
+      } else {
+        await pyodide.runPythonAsync(transformed);
+      }
+    } catch (err){
+      var msg = String(err.message || err);
+      termPrint(msg, 'l-err');
+    }
+  }
+
+  function navigateHistory(dir){
+    if (history.length === 0) return;
+    histIndex += dir;
+    if (histIndex < 0) histIndex = 0;
+    if (histIndex >= history.length){ histIndex = history.length; termInput.value = ''; return; }
+    termInput.value = history[histIndex];
+    termInput.selectionStart = termInput.selectionEnd = termInput.value.length;
+  }
+
+  /* =====================================================================
+     DATA CENTER + FILE COMMANDS
+     ===================================================================== */
+  function downloadText(filename, text, mime){
+    var blob = new Blob([text], { type:(mime || 'text/plain') + ';charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 4000);
+  }
+  function row(label, value){ return '  ' + padR(label + ':', 15) + value; }
+  function lookup(nameArg){
+    var nm = normalizeName(nameArg);
+    return nm ? findByName(nm) : null;
+  }
+  function blockIfPaused(){
+    if (Store.paused){ bad('Saving is paused (' + Store.pauseReason + '). Reload this page first, then try again.'); return true; }
+    return false;
+  }
+
+  function storageReport(){
+    var est = null, persisted = null, ps = [];
+    if (navigator.storage && navigator.storage.estimate) ps.push(navigator.storage.estimate().then(function(e){ est = e; }, function(){}));
+    if (navigator.storage && navigator.storage.persisted) ps.push(navigator.storage.persisted().then(function(p){ persisted = p; }, function(){}));
+    return Promise.all(ps).then(function(){
+      var list = filesList();
+      var bytes = list.reduce(function(a, f){ return a + byteLen(f.content); }, 0);
+      var engine = Store.mode === 'idb' ? 'IndexedDB' : (Store.mode === 'local' ? 'localStorage (fallback' + (Store.idbError ? ': ' + Store.idbError : '') + ')' : 'memory only (nothing is kept after closing)');
+      var health = Store.paused ? 'paused (' + Store.pauseReason + ')' : (Store.lastError ? 'error: ' + Store.lastError : (Store.mode === 'memory' ? 'not saving' : 'ok'));
+      var where = (location.origin && location.origin !== 'null') ? location.origin : location.href.split('#')[0];
+      var lines = [
+        'Storage',
+        row('engine', engine),
+        row('health', health),
+        row('last saved', Store.lastSave ? fmtTime(Store.lastSave) : 'not yet this session'),
+        row('saves', Store.saveCount + ' this session'),
+        row('files', list.length),
+        row('data size', fmtBytes(bytes)),
+        row('browser use', est ? fmtBytes(est.usage || 0) + ' of ' + fmtBytes(est.quota || 0) : 'unknown'),
+        row('persistent', persisted === null ? 'unknown' : (persisted ? 'yes' : 'no — type persist to ask')),
+        row('last backup', S.app.lastExport ? fmtDate(S.app.lastExport) : 'never — type export'),
+        row('lives at', where)
+      ];
+      sys(lines[0]);
+      say(lines.slice(1).join('\n'));
+    });
+  }
+
+  function reviewText(rv){
+    var r = rv.result;
+    var local = filesList();
+    var taken = takenNames();
+    var clashes = 0;
+    r.files.forEach(function(f){ if (taken[f.name.toLowerCase()]) clashes++; });
+    var lines = [
+      row('file', rv.name),
+      row('exported', (r.exportedAt ? fmtDate(Date.parse(r.exportedAt)) : 'unknown') + (r.by ? ' by ' + r.by : '')),
+      row('in backup', r.files.length + ' files' + (r.skipped ? ' (' + r.skipped + ' invalid skipped)' : '')),
+      row('on this device', local.length + ' files'),
+      row('name clashes', clashes + (clashes ? ' (merge renames them, e.g. main.py becomes main-2.py)' : ''))
+    ];
+    return lines.join('\n');
+  }
+
+  function readAsText(file){
+    return new Promise(function(resolve, reject){
+      var fr = new FileReader();
+      fr.onload = function(){ resolve(String(fr.result)); };
+      fr.onerror = function(){ reject(fr.error || new Error('could not read ' + file.name)); };
+      fr.readAsText(file);
+    });
+  }
+
+  async function handleImportFiles(fileList){
+    var files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) return;
+    var pys = [], jsons = [], other = [];
+    files.forEach(function(f){
+      if (/\.json$/i.test(f.name)) jsons.push(f);
+      else if (/\.py$/i.test(f.name)) pys.push(f);
+      else other.push(f);
+    });
+    other.forEach(function(f){ bad('Skipped ' + f.name + ' (only .json backups and .py files can be imported).'); });
+
+    if (pys.length){
+      var added = [], last = null;
+      for (var i = 0; i < pys.length; i++){
+        var f = pys[i];
+        if (f.size > 5000000){ bad('Skipped ' + f.name + ' (too large).'); continue; }
+        if (filesList().length >= MAX_FILES){ bad('File limit reached (' + MAX_FILES + ').'); break; }
+        try {
+          var text = await readAsText(f);
+          var nm = normalizeName(f.name);
+          if (!nm || text.length > MAX_CONTENT){ bad('Skipped ' + f.name + ' (invalid name or too large).'); continue; }
+          last = addFileRecord(nm, text);
+          added.push(last.name);
+        } catch (e){ bad('Could not read ' + f.name + ': ' + errMsg(e)); }
+      }
+      if (last){
+        openFile(last.id);
+        sys('Imported ' + added.length + ' .py file' + (added.length === 1 ? '' : 's') + ': ' + added.join(', '));
+        flushSave();
+      }
+    }
+
+    if (jsons.length){
+      if (jsons.length > 1) bad('Only one .json backup can be reviewed at a time. Using ' + jsons[0].name + '.');
+      var jf = jsons[0];
+      if (jf.size > 20000000){ bad('That backup is too large to import.'); return; }
+      var parsed;
+      try { parsed = JSON.parse(await readAsText(jf)); }
+      catch (e){ bad(jf.name + ' is not valid JSON.'); return; }
+      var res = inspectBackup(parsed);
+      if (!res.ok){ bad(res.error); return; }
+      Store.review = { name:jf.name, result:res };
+      sys('Backup review');
+      say(reviewText(Store.review));
+      res.warnings.forEach(function(w){ bad('warning: ' + w); });
+      sys('Choose: import merge (keeps everything, adds the backup) | import replace (swaps this device for the backup) | import cancel');
+    }
+  }
+  importFile.addEventListener('change', function(){
+    var list = importFile.files;
+    handleImportFiles(list).then(function(){ importFile.value = ''; }, function(e){ bad('Import failed: ' + errMsg(e)); importFile.value = ''; });
+  });
+
+  async function doImport(mode){
+    var rv = Store.review;
+    if (!rv) return;
+    if (blockIfPaused()) return;
+    var ok = await makeSnapshot('before import (' + mode + ')');
+    if (!ok){ bad('Could not take a safety snapshot, so nothing was changed. ' + Store.lastError); return; }
+    var r = applyData(rv.result, mode);
+    Store.review = null;
+    await afterDataChange();
+    if (mode === 'merge') sys('Merged: ' + r.added + ' files added' + (r.renamed ? ' (' + r.renamed + ' renamed)' : '') + (r.skipped ? ', ' + r.skipped + ' skipped (file limit)' : '') + '.');
+    else sys('Replaced: this device now has ' + r.added + ' files from the backup.');
+    say('A safety snapshot was saved. Type backups to see it, restore <n> to undo.');
+  }
+
+  /* TERM-COMMANDS-START */
+  var TERM_COMMANDS = {
+    clear: function(){ termOutput.innerHTML = ''; },
+    cls:   function(){ termOutput.innerHTML = ''; },
+    help: function(){
+      sys('Terminal commands');
+      say(
+        '  clear, cls          clear the terminal\n' +
+        '  help                show this list\n' +
+        '  history [-c]        show or clear command history\n' +
+        '  echo <text>         print text\n' +
+        'Files\n' +
+        '  ls                  list saved files\n' +
+        '  open <name>         open a file in the editor\n' +
+        '  new <name>          create an empty file and open it\n' +
+        '  rename <old> <new>  rename a file\n' +
+        '  rm <name>           delete a file (asks you to confirm)\n' +
+        '  whoami [edit]       show or edit your profile\n' +
+        'Data Center\n' +
+        '  storage             storage status and usage\n' +
+        '  export [name]       download a backup, or one file as .py\n' +
+        '  import              pick a .json backup or .py files\n' +
+        '  import merge | replace | cancel   answer a backup review\n' +
+        '  persist             ask the browser to keep your data\n' +
+        '  backups             list safety snapshots\n' +
+        '  restore <n>         restore snapshot n\n' +
+        '  wipe                delete everything (asks you to confirm)\n' +
+        'Anything else runs as Python.'
+      );
+    },
+    history: function(arg){
+      if (arg === '-c'){
+        history.length = 0;
+        histIndex = 0;
+        saveHistory();
+        termPrint('History cleared.', 'l-sys');
+        return;
+      }
+      if (arg !== ''){ termPrint('usage: history [-c]', 'l-err'); return; }
+      var width = String(history.length).length;
+      var rows = history.map(function(h, i){
+        var n = String(i + 1);
+        while (n.length < width) n = ' ' + n;
+        return '  ' + n + '  ' + h;
+      });
+      if (rows.length) termPrint(rows.join('\n'));
+    },
+    echo: function(arg){
+      var m = arg.match(/^(["'])([\s\S]*)\1$/);
+      termPrint(m ? m[2] : arg);
+    },
+
+    /* ---- files ---- */
+    ls: function(){
+      var list = filesList().sort(function(a, b){ return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); });
+      if (!list.length){ say('(no files)'); return; }
+      var w = 0;
+      list.forEach(function(f){ if (f.name.length > w) w = f.name.length; });
+      say(list.map(function(f){
+        return (f.id === S.session.openId ? '* ' : '  ') + padR(f.name, w + 2) + padR(fmtBytes(f.size || byteLen(f.content)), 10) + fmtDate(f.updatedAt);
+      }).join('\n'));
+    },
+    open: function(arg){
+      if (!arg){ usage('open <name>'); return; }
+      var f = lookup(arg);
+      if (!f){ bad('No such file: ' + (normalizeName(arg) || arg) + '. Try ls.'); return; }
+      openFile(f.id);
+      sys('Opened ' + f.name);
+    },
+    'new': function(arg){
+      if (!arg){ usage('new <name>'); return; }
+      var r = createFile(arg);
+      if (r.error){ bad(r.error); return; }
+      openFile(r.file.id);
+      sys('Created ' + r.file.name);
+    },
+    rename: function(arg){
+      var p = arg.split(/\s+/).filter(Boolean);
+      if (p.length !== 2){ usage('rename <old> <new>'); return; }
+      var f = lookup(p[0]);
+      if (!f){ bad('No such file: ' + (normalizeName(p[0]) || p[0]) + '. Try ls.'); return; }
+      var e = renameFile(f.id, p[1]);
+      if (e){ bad(e); return; }
+      sys('Renamed to ' + S.files[f.id].name);
+    },
+    rm: function(arg){
+      var p = arg.split(/\s+/).filter(Boolean);
+      if (!p.length || p.length > 2 || (p.length === 2 && p[1] !== 'confirm')){ usage('rm <name> [confirm]'); return; }
+      var f = lookup(p[0]);
+      if (!f){ bad('No such file: ' + (normalizeName(p[0]) || p[0]) + '. Try ls.'); return; }
+      if (p[1] !== 'confirm'){ sys('Delete ' + f.name + '? Type rm ' + p[0] + ' confirm to delete it.'); return; }
+      removeFile(f.id);
+      sys('Deleted ' + f.name);
+    },
+    whoami: function(arg){
+      if (arg === 'edit'){ openProfile(true); return; }
+      if (arg !== ''){ usage('whoami [edit]'); return; }
+      if (!S.profile){ say('No profile yet. Type whoami edit to set one up.'); return; }
+      var lvl = ghostLevel();
+      sys('Profile');
+      say([
+        row('name', S.profile.name),
+        row('experience', S.profile.experience),
+        row('goal', S.profile.goal),
+        row('font size', S.settings.fontSize),
+        row('auto-pair', S.settings.autoPair ? 'on' : 'off'),
+        row('suggestions', S.settings.ghost ? 'on (' + lvl.label + ')' : 'off')
+      ].join('\n') + '\n  Type whoami edit to change these.');
+    },
+
+    /* ---- Data Center ---- */
+    storage: function(){ return storageReport(); },
+    'export': function(arg){
+      if (arg){
+        var f = lookup(arg);
+        if (!f){ bad('No such file: ' + (normalizeName(arg) || arg) + '. Try ls.'); return; }
+        downloadText(f.name, f.content, 'text/x-python');
+        sys('Downloaded ' + f.name);
+        return;
+      }
+      var json = JSON.stringify(exportPayload(), null, 2);
+      var fname = 'python-v6-backup-' + dateStamp() + '.json';
+      downloadText(fname, json, 'application/json');
+      S.app.lastExport = now();
+      markApp();
+      sys('Backup downloaded: ' + fname + ' (' + filesList().length + ' files, ' + fmtBytes(byteLen(json)) + ')');
+    },
+    'import': function(arg){
+      if (arg === 'merge' || arg === 'replace') return doImport(arg);
+      if (arg === 'cancel'){ Store.review = null; sys('Import cancelled. Nothing was changed.'); return; }
+      if (arg !== ''){ usage('import [merge | replace | cancel]'); return; }
+      sys('Choose a .json backup or .py files…');
+      importFile.click();
+    },
+    persist: async function(){
+      if (!(navigator.storage && navigator.storage.persist)){ bad('This browser cannot be asked to keep data. Use export for backups.'); return; }
+      try {
+        if (navigator.storage.persisted && await navigator.storage.persisted()){ sys('Already persistent: the browser will not clear your data automatically.'); return; }
+        var ok = await navigator.storage.persist();
+        if (ok) sys('Granted: the browser will keep your data.');
+        else bad('Declined: the browser may clear data when space is low. Type export to keep a backup.');
+      } catch (e){ bad('Could not ask the browser: ' + errMsg(e)); }
+    },
+    backups: async function(){
+      var list;
+      try { list = await A().listSnapshots(); } catch (e){ bad('Could not read snapshots: ' + errMsg(e)); return; }
+      if (!list.length){ say('No safety snapshots yet. They are made before import, restore and wipe.'); return; }
+      sys('Safety snapshots (newest first)');
+      say(list.map(function(s, i){
+        var n = (s.data && Array.isArray(s.data.files)) ? s.data.files.length : 0;
+        return '  ' + (i + 1) + '  ' + fmtDate(s.ts) + '  ' + padR(s.reason || '', 30) + n + ' files';
+      }).join('\n') + '\n  Use restore <n> to go back to one.');
+    },
+    restore: async function(arg){
+      if (!/^\d+$/.test(arg) || parseInt(arg, 10) < 1){ usage('restore <n>   (see backups)'); return; }
+      if (blockIfPaused()) return;
+      var n = parseInt(arg, 10);
+      var list;
+      try { list = await A().listSnapshots(); } catch (e){ bad('Could not read snapshots: ' + errMsg(e)); return; }
+      var snap = list[n - 1];
+      if (!snap){ bad('No snapshot ' + n + '. Try backups.'); return; }
+      var body = readBody(isObj(snap.data) ? migrateData(snap.data, snap.schemaVersion || 1) : {});
+      var ok = await makeSnapshot('before restore of #' + n);
+      if (!ok){ bad('Could not take a safety snapshot, so nothing was changed. ' + Store.lastError); return; }
+      var r = applyData(body, 'replace');
+      await afterDataChange();
+      sys('Restored snapshot ' + n + ' (' + r.added + ' files). The state before it was saved as a new snapshot.');
+    },
+    wipe: async function(arg){
+      var p = arg.split(/\s+/).filter(Boolean);
+      var all = false;
+      if (p[0] === 'all'){ all = true; p.shift(); }
+      if (p.length > 1 || (p.length === 1 && p[0] !== 'confirm')){ usage('wipe [all] confirm'); return; }
+      if (!p.length){
+        sys('This deletes every file, your profile, settings and command history from this browser.');
+        say('Type wipe confirm to continue. A safety snapshot is kept so restore 1 can undo it.\nType wipe all confirm to delete the snapshots too.');
+        return;
+      }
+      if (blockIfPaused()) return;
+      if (Store.timer){ clearTimeout(Store.timer); Store.timer = null; }
+      await Store.queue;
+      if (!all){
+        var ok = await makeSnapshot('before wipe');
+        if (!ok){ bad('Could not take a safety snapshot, so nothing was deleted. ' + Store.lastError); return; }
+      }
+      try { await A().wipe(all); }
+      catch (e){ bad('Wipe failed: ' + errMsg(e)); return; }
+      S = freshState();
+      history = []; histIndex = 0;
+      Store.dirty = {}; Store.deleted = {}; Store.metaDirty = {}; Store.appDirty = false;
+      Store.revision = 0; Store.review = null; Store.lastError = '';
+      splitRatio = S.session.split;
+      applySettings();
+      broadcast({ t:'wipe' });
+      ensureFile();
+      openFile(latestFileId());
+      layoutSplit();
+      sys('Everything was deleted.' + (all ? '' : ' A safety snapshot was kept (backups, restore 1).'));
+      say('Type whoami edit to set up your profile again.');
+      flushSave();
+    }
+  };
+
+  /* A command only applies when its guard says so. `import os` and every other
+     line with a module name must still run as Python. */
+  var TERM_GUARDS = {
+    'import': function(arg){ return arg === '' || (!!Store.review && /^(merge|replace|cancel)$/.test(arg)); }
+  };
+
+  function tryTermCommand(line){
+    var m = line.match(/^\s*([A-Za-z]+)(?:\s+([\s\S]*))?$/);
+    if (!m) return false;
+    var name = m[1];
+    if (!Object.prototype.hasOwnProperty.call(TERM_COMMANDS, name)) return false;
+    var arg = (m[2] || '').trim();
+    if (TERM_GUARDS[name] && !TERM_GUARDS[name](arg)) return false;
+    if (/^[=.\[]/.test(arg)) return false;
+    if (name !== 'echo' && arg.charAt(0) === '(') return false;
+    if (pyodideReady){
+      try { if (pyodide.globals.has(name)) return false; } catch (e) {}
+    }
+    termPrint('>>> ' + line, 'l-echo');
+    pushHistory(line);
+    histIndex = history.length;
+    try {
+      var r = TERM_COMMANDS[name](arg);
+      if (r && typeof r.then === 'function') r.then(null, function(e){ bad(errMsg(e)); });
+    } catch (e){ bad(errMsg(e)); }
+    return true;
+  }
+  /* TERM-COMMANDS-END */
+
+  termInput.addEventListener('keydown', async function(e){
+    if (e.key === 'ArrowUp' && !pendingInputResolve){ e.preventDefault(); navigateHistory(-1); return; }
+    if (e.key === 'ArrowDown' && !pendingInputResolve){ e.preventDefault(); navigateHistory(1); return; }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+
+    if (pendingInputResolve){
+      var answer = termInput.value;
+      termPrint((termPrompt.textContent || '') + answer, 'l-echo');
+      termInput.value = '';
+      var resolve = pendingInputResolve;
+      pendingInputResolve = null;
+      termPrompt.textContent = pendingPromptRestore;
+      resolve(answer);
+      return;
+    }
+
+    var line = termInput.value;
+
+    if (!buffer && tryTermCommand(line)){
+      termInput.value = '';
+      return;
+    }
+
+    if (!pyodideReady) return;
+
+    termPrint((buffer ? '... ' : '>>> ') + line, 'l-echo');
+    pushHistory(line);
+    histIndex = history.length;
+    termInput.value = '';
+
+    buffer = buffer ? (buffer + '\n' + line) : line;
+
+    if (line.trim() === '' && buffer.trim() !== ''){
+      await runReplChunk(buffer);
+      buffer = '';
+      termPrompt.textContent = '>>>';
+      return;
+    }
+
+    if (needsMore(buffer)){
+      termPrompt.textContent = '...';
+      var lastLine = buffer.split('\n').pop();
+      var indent = leadingWhitespace(lastLine);
+      if (lastLine.trim().endsWith(':')) indent += '    ';
+      termInput.value = indent;
+      termInput.selectionStart = termInput.selectionEnd = indent.length;
+    } else {
+      await runReplChunk(buffer);
+      buffer = '';
+      termPrompt.textContent = '>>>';
+    }
+  });
+
+  /* ---------------- save when leaving the page ---------------- */
+  window.addEventListener('pagehide', function(){ flushSave(); });
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') flushSave(); });
+
+  /* ---------------- boot ---------------- */
+  async function boot(){
+    updateHighlight();
+    applyViewportHeight();
+    window.addEventListener('load', layoutSplit);
+    try {
+      await initStore();
+    } catch (e){
+      Store.mode = 'memory'; Store.ready = true; buildState({ files:[], meta:{} });
+    }
+    splitRatio = S.session.split;
+    applySettings();
+    layoutSplit();
+
+    if (Store.mode === 'local') termPrint('IndexedDB is not available (' + Store.idbError + '). Using localStorage instead.', 'l-err');
+    if (Store.mode === 'memory'){
+      termPrint('No browser storage is available, so files are NOT saved. Use export to keep a copy.', 'l-err');
+      setIndicator('memory');
+    }
+    if (Store.paused){
+      setIndicator('paused');
+      showNotice('This data was saved by a newer version of the editor. Saving is off here to protect it.', null);
+    }
+
+    if (S.profile && !filesList().length) ensureFile();
+    var startId = (S.session.openId && S.files[S.session.openId]) ? S.session.openId : latestFileId();
+    if (startId) openFile(startId);
+    if (Store.legacyHistory) markMeta('history');
+
+    if (!S.profile){
+      openProfile(false);
+    } else {
+      termPrint('Welcome back, ' + S.profile.name + '. ' + filesList().length + ' file' + (filesList().length === 1 ? '' : 's') + ' loaded.', 'l-sys');
+      var ref = S.app.lastExport || Math.min.apply(null, filesList().map(function(f){ return f.createdAt; }).concat([now()]));
+      if (now() - ref > 14 * 86400000) say('Tip: your last backup is ' + Math.floor((now() - ref) / 86400000) + ' days old. Type export to save a new one.');
+    }
+    if (Store.ind === 'saving') scheduleSave();
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
